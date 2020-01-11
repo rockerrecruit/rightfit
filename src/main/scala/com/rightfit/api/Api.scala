@@ -1,5 +1,6 @@
 package com.rightfit.api
 
+import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.{Decoder, Encoder}
 import org.http4s.circe._
 import org.http4s.dsl.Http4sDsl
@@ -15,6 +16,14 @@ final case class Api[R](rootUri: String) {
 
   implicit def circeJsonEncoder[A](implicit decoder: Encoder[A]): EntityEncoder[UserTask, A] = jsonEncoderOf[UserTask, A]
 
+  case class ScoreData(score: Int)
+
+  object ScoreData {
+    implicit val e: Encoder[ScoreData] = deriveEncoder
+    implicit val d: Decoder[ScoreData] = deriveDecoder
+
+}
+
   val dsl: Http4sDsl[UserTask] = Http4sDsl[UserTask]
 
   import dsl._
@@ -23,6 +32,11 @@ final case class Api[R](rootUri: String) {
 
     HttpRoutes.of[UserTask] {
       case GET -> Root / IntVar(id) => Ok()
+      case request @ POST -> Root =>
+        request.decode[ScoreData] { json =>
+          println(s"Read score data: [$json]")
+          Ok()
+        }
     }
   }
 }
