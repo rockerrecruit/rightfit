@@ -32,5 +32,4 @@ object Configuration {
         Config(ApiConfig("loacalhost", 8080), DbConfig("localhost", "", "")))
     }
   }
-
 }
