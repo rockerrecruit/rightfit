@@ -31,7 +31,7 @@ final case class Api[R](rootUri: String) {
   def route: HttpRoutes[UserTask] = {
 
     HttpRoutes.of[UserTask] {
-      case GET -> Root / IntVar(id) => Ok()
+      case GET -> Root / IntVar(_) => Ok()
       case request @ POST -> Root =>
         request.decode[ScoreData] { json =>
           println(s"Read score data: [$json]")
