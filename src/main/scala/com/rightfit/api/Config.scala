@@ -12,11 +12,13 @@ trait Configuration extends Serializable {
 }
 
 object Configuration {
+
   trait Service[R] {
     val load: RIO[R, Config]
   }
 
   trait Live extends Configuration {
+
     val config: Service[Any] = new Service[Any] {
       import pureconfig.generic.auto._
 
@@ -27,9 +29,9 @@ object Configuration {
   object Live extends Live
 
   trait Test extends Configuration {
+
     val config: Service[Any] = new Service[Any] {
-      val load: Task[Config] = Task.effectTotal(
-        Config(ApiConfig("loacalhost", 8080), DbConfig("localhost", "", "")))
+      val load: Task[Config] = Task.effectTotal(Config(ApiConfig("loacalhost", 8080), DbConfig("localhost", "", "")))
     }
   }
 }
