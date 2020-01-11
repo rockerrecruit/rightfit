@@ -19,6 +19,7 @@ libraryDependencies ++= List(
   "dev.zio" %% "zio-streams" % ZioVersion,
   "dev.zio" %% "zio-interop-cats" % "2.0.0.0-RC10",
   "org.http4s" %% "http4s-blaze-server" % Http4sVersion,
+  "org.http4s" %% "http4s-blaze-client" % Http4sVersion,
   "org.http4s" %% "http4s-circe" % Http4sVersion,
   "org.http4s" %% "http4s-dsl" % Http4sVersion,
   "org.tpolecat" %% "doobie-core" % DoobieVersion,
