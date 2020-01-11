@@ -1,4 +1,5 @@
 package com.rightfit.api
+import pureconfig._
 
 case class Config(api: ApiConfig, dbConfig: DbConfig)
 case class ApiConfig(endpoint: String, port: Int)
@@ -17,8 +18,9 @@ object Configuration {
 
   trait Live extends Configuration {
     val config: Service[Any] = new Service[Any] {
+      import pureconfig.generic.auto._
 
-      val load: Task[Config] = Task.effect(loadConfigOrThrow[Config])
+      val load: Task[Config] = Task.effect(ConfigSource.default.loadOrThrow[Config])
     }
   }
 

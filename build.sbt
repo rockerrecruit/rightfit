@@ -9,7 +9,7 @@ val ZioVersion = "1.0.0-RC17"
 val Http4sVersion = "0.21.0-M6"
 val DoobieVersion = "0.8.8"
 val ZIOVersion = "1.0.0-RC17"
-val PureConfigVersion = "0.11.0"
+val PureConfigVersion = "0.12.2"
 val H2Version = "1.4.199"
 
 libraryDependencies ++= List(
