@@ -11,35 +11,35 @@ import zio.clock.Clock
 import zio.console.putStrLn
 import zio.interop.catz._
 
-  object ApplicationMain extends App {
+object ApplicationMain extends App {
 
-    type AppEnvironment = Clock with Blocking
+  type AppEnvironment = Clock with Blocking
 
-    type AppTask[A] = RIO[AppEnvironment, A]
+  type AppTask[A] = RIO[AppEnvironment, A]
 
-    override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
-      val program: ZIO[ZEnv, Throwable, Unit] = for {
-        conf <- api.loadConfig.provide(Configuration.Live)
+  override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
+    val program: ZIO[ZEnv, Throwable, Unit] = for {
+      conf <- api.loadConfig.provide(Configuration.Live)
 
-        httpApp = Router[AppTask](
-          "/score" -> Api(s"${conf.api.endpoint}/score").route
-        ).orNotFound
+      httpApp = Router[AppTask](
+        "/score" -> Api(s"${conf.api.endpoint}/score").route
+      ).orNotFound
 
-        server = ZIO.runtime[AppEnvironment].flatMap { implicit rts =>
-          BlazeServerBuilder[AppTask]
-            .bindHttp(conf.api.port, "0.0.0.0")
-            .withHttpApp(CORS(httpApp))
-            .serve
-            .compile[AppTask, AppTask, ExitCode]
-            .drain
-        }
+      server = ZIO.runtime[AppEnvironment].flatMap { implicit rts =>
+        BlazeServerBuilder[AppTask]
+          .bindHttp(conf.api.port, "0.0.0.0")
+          .withHttpApp(CORS(httpApp))
+          .serve
+          .compile[AppTask, AppTask, ExitCode]
+          .drain
+      }
 
-        program <- server
-      } yield program
+      program <- server
+    } yield program
 
-      program.foldM(
-        err => putStrLn(s"Execution failed with: $err") *> IO.succeed(1),
-        _ => IO.succeed(0)
-      )
-    }
+    program.foldM(
+      err => putStrLn(s"Execution failed with: $err") *> IO.succeed(1),
+      _ => IO.succeed(0)
+    )
   }
+}
