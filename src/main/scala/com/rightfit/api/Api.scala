@@ -15,13 +15,12 @@ case class ScoreData(score: Int, choice: PreferenceChoice)
 object ScoreData {
   implicit val e: Encoder[ScoreData] = deriveEncoder
   implicit val d: Decoder[ScoreData] = deriveDecoder
-
 }
 
 case class PreferenceChoice(value: String) extends AnyVal
 
 object PreferenceChoice {
-  implicit val s: Show[PreferenceChoice] = _.value
+  implicit val s: Show[PreferenceChoice]    = _.value
   implicit val e: Encoder[PreferenceChoice] = deriveUnwrappedEncoder
   implicit val d: Decoder[PreferenceChoice] = deriveUnwrappedDecoder
 }
