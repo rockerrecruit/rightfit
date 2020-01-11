@@ -10,11 +10,11 @@ import zio.interop.catz._
 
 final case class Api[R](rootUri: String) {
 
-  type UserTask[A] = RIO[R, A]
+  type ScoreTask[A] = RIO[R, A]
 
-  implicit def circeJsonDecoder[A](implicit decoder: Decoder[A]): EntityDecoder[UserTask, A] = jsonOf[UserTask, A]
+  implicit def circeJsonDecoder[A](implicit decoder: Decoder[A]): EntityDecoder[ScoreTask, A] = jsonOf[ScoreTask, A]
 
-  implicit def circeJsonEncoder[A](implicit decoder: Encoder[A]): EntityEncoder[UserTask, A] = jsonEncoderOf[UserTask, A]
+  implicit def circeJsonEncoder[A](implicit decoder: Encoder[A]): EntityEncoder[ScoreTask, A] = jsonEncoderOf[ScoreTask, A]
 
   case class ScoreData(score: Int)
 
@@ -24,14 +24,14 @@ final case class Api[R](rootUri: String) {
 
 }
 
-  val dsl: Http4sDsl[UserTask] = Http4sDsl[UserTask]
+  val dsl: Http4sDsl[ScoreTask] = Http4sDsl[ScoreTask]
 
   import dsl._
 
-  def route: HttpRoutes[UserTask] = {
+  def route: HttpRoutes[ScoreTask] = {
 
-    HttpRoutes.of[UserTask] {
-      case GET -> Root / IntVar(_) => Ok()
+    HttpRoutes.of[ScoreTask] {
+      case GET -> Root / IntVar(id) => Ok()
       case request @ POST -> Root =>
         request.decode[ScoreData] { json =>
           println(s"Read score data: [$json]")
