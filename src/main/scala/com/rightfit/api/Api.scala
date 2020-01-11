@@ -44,6 +44,7 @@ final case class Api[R](rootUri: String) {
   def route: HttpRoutes[ScoreTask] = {
 
     HttpRoutes.of[ScoreTask] {
+      case GET -> Root / "health"   => Ok()
       case GET -> Root / IntVar(id) => Ok()
       case request @ POST -> Root =>
         request.decode[ScoreData] { json =>
