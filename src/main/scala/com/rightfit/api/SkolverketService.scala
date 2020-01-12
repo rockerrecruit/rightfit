@@ -1,99 +1,96 @@
 package com.rightfit.api
 
-import com.rightfit.api.SkolverketService.Api.SchoolSummary
-import com.rightfit.api.SkolverketService.Api.SchoolSummary.School
-import org.http4s.client.Client
-import zio.{Task, ZIO}
+import java.time.Instant
+
+import com.rightfit.api.SkolverketService.Api.{SchoolSummary, SchoolUnitSerializeClass}
+import io.circe.generic.semiauto
+import io.circe.{Decoder, Encoder}
+import org.http4s.circe.{jsonEncoderOf, jsonOf}
+import org.http4s.client._
+import org.http4s.{EntityDecoder, EntityEncoder, Uri}
+import zio.Task
+import zio.interop.catz._
 
 trait SkolverketService {
   def service: SkolverketService.Service[Any]
 }
 
 object SkolverketService {
+
   trait Service[R] {
 
-    def getSchools(blazeClient: Client[Task[SchoolSummary]], averageGrade: Int, schoolName: String): ZIO[R, String, SchoolSummary] = {
-      import org.http4s._
-      val EndPoint = "https://api.scb.se/UF0109/v2/skolenhetsregister/sv/skolenhet"
+    def getSchools(blazeClient: Client[Task[SchoolSummary]],
+                   averageGrade: Int,
+                   schoolName: String): Task[SchoolSummary] = {
+      val EndPoint =
+        "https://api.scb.se/UF0109/v2/skolenhetsregister/sv/skolenhet"
       val baseUri = Uri.uri(EndPoint)
-
-      blazeClient.expect[SchoolSummary](baseUri)
-
-      ???
+      blazeClient.expect[SchoolUnitSerializeClass](baseUri).map(_.toSchoolSummary)
     }
   }
 
   object Api {
-    case class SchoolSummary(schools: List[School])
+
+    case class SchoolSummary(withdrawalDate: Instant,
+                             footNote: SchoolSummary.FootNote,
+                             schoolUnits: List[SchoolSummary.SchoolUnit])
 
     object SchoolSummary {
-      case class School(id: String, name: String)
+      import SchoolUnit._
+
+      case class FootNote(value: String) extends AnyVal
+      case class SchoolUnit(code: Code, name: Name, municipality: Municipality, orgNo: OrgNo)
+
+      object SchoolUnit {
+        case class Code(value: String)         extends AnyVal
+        case class Name(value: String)         extends AnyVal
+        case class Municipality(value: String) extends AnyVal
+        case class OrgNo(value: String)        extends AnyVal
+      }
+    }
+
+    case class SchoolUnitSerializeClass(Uttagsdatum: Instant,
+                                        Fotnot: String,
+                                        Skolenheter: List[SchoolUnitSerializeClass.Skolenhet]) {
+
+      def toSchoolSummary: SchoolSummary = {
+        import SchoolSummary.SchoolUnit._
+        SchoolSummary(
+          Uttagsdatum,
+          SchoolSummary.FootNote(Fotnot),
+          Skolenheter.map { enhet =>
+            SchoolSummary.SchoolUnit(
+              Code(enhet.Kommunkod),
+              Name(enhet.Skolenhetsnamn),
+              Municipality(enhet.Kommunkod),
+              OrgNo(enhet.PeOrgNr)
+            )
+          }
+        )
+      }
+    }
+
+    object SchoolUnitSerializeClass {
+
+      implicit def circeJsonDecoder[A](
+        implicit decoder: Decoder[A]
+      ): EntityDecoder[Task, A] = jsonOf[Task, A]
+
+      implicit def circeJsonEncoder[A](
+        implicit decoder: Encoder[A]
+      ): EntityEncoder[Task, A] = jsonEncoderOf[Task, A]
+
+      implicit val e: Encoder[SchoolUnitSerializeClass] = semiauto.deriveEncoder
+      implicit val d: Decoder[SchoolUnitSerializeClass] = semiauto.deriveDecoder
+
+      case class Skolenhet(Skolenhetskod: String, Skolenhetsnamn: String, Kommunkod: String, PeOrgNr: String)
+
+      object Skolenhet {
+        implicit val e: Encoder[Skolenhet] = semiauto.deriveEncoder
+        implicit val d: Decoder[Skolenhet] = semiauto.deriveDecoder
+      }
+
     }
 
   }
 }
-
-
-/*
-
-
-package se.bynk.tink.api
-
-import cats.effect.Effect
-import org.http4s._
-import org.http4s.client.Client
-import org.http4s.client.dsl.Http4sClientDsl
-import org.http4s.dsl.io._
-import org.http4s.headers.{Accept, Authorization}
-import se.bynk.tink.api.ApiConfig.Bootstrap
-import se.bynk.tink.api.command._
-
-trait ApiAlgebra[F[_]] {
-  def getAccessToken(authorizationCode: String): F[AuthResponse]
-  def getAccounts(auth: AuthResponse): F[TinkBankAccountSummary]
-}
-
-object ApiAlgebra {
-
-  class ApiClient[F[_]: Effect](client: Client[F], bootstrap: Bootstrap) extends ApiAlgebra[F] with Http4sClientDsl[F] {
-
-    import bootstrap._
-
-    override def getAccessToken(authorizationCode: String): F[AuthResponse] = {
-      val EndPoint = "oauth/token"
-      val post = POST(
-        UrlForm(
-          "code"          -> authorizationCode,
-          "client_id"     -> clientId.value,
-          "client_secret" -> clientSecret.value,
-          "grant_type"    -> "authorization_code"
-        ),
-        buildUri(EndPoint)
-      )
-
-      client.expect[AuthResponse](post)
-    }
-
-    override def getAccounts(auth: AuthResponse): F[TinkBankAccountSummary] = {
-      val EndPoint = "accounts/list"
-      val request = GET(
-        buildUri(EndPoint),
-        Authorization(Credentials.Token(AuthScheme.Bearer, auth.access_token)),
-        Accept(MediaType.application.json)
-      )
-      client.expect[TinkBankAccountSummary](request)
-    }
-
-    private def buildUri(endpoint: String): Uri = {
-      val baseUri = Uri.unsafeFromString(baseUrl.value)
-      baseUri.withPath(s"${baseUri.path}/$endpoint")
-    }
-
-  }
-
-  object ApiClient {
-    def apply[F[_]: Effect](client: Client[F], bs: Bootstrap): ApiClient[F] = new ApiClient[F](client, bs)
-  }
-
-}
- */

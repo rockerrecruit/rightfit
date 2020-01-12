@@ -28,6 +28,13 @@ libraryDependencies ++= List(
   "io.circe" %% "circe-generic-extras" % CirceVersion,
   "com.github.pureconfig" %% "pureconfig" % PureConfigVersion,
   "com.h2database" % "h2" % H2Version,
-  "org.slf4j" % "slf4j-log4j12" % "1.7.26"
+  "org.slf4j" % "slf4j-log4j12" % "1.7.26",
+
+)
+
+libraryDependencies ++= Seq(
+  "org.http4s" %% "http4s-dsl" % Http4sVersion,
+  "org.http4s" %% "http4s-blaze-server" % Http4sVersion,
+  "org.http4s" %% "http4s-blaze-client" % Http4sVersion
 )
 
