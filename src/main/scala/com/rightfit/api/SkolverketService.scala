@@ -2,6 +2,7 @@ package com.rightfit.api
 
 import java.time.Instant
 
+import cats.Show
 import cats.effect.Resource
 import com.rightfit.api.SkolverketService.Api.{SchoolSummary, SchoolUnitJsonRep}
 import io.circe.generic.semiauto
@@ -10,61 +11,47 @@ import org.http4s.circe.{jsonEncoderOf, jsonOf}
 import org.http4s.client._
 import org.http4s.client.blaze.BlazeClientBuilder
 import org.http4s.{EntityDecoder, EntityEncoder, Uri}
-import zio.{Task, ZIO}
 import zio.interop.catz._
+import zio.{App, Task, ZIO, _}
 
-trait SkolverketService {
-  def service: SkolverketService.Service[Any]
+trait SkolverketService[R] {
+  def service: SkolverketService.Service[R]
 }
 
 object SkolverketService {
 
   trait Service[R] {
-    def getSchools(blazeClient: Client[Task[SchoolSummary]], averageGrade: Int, schoolName: String): Task[SchoolSummary]
+    def getSchools(blazeClient: Client[Task], averageGrade: Int, schoolName: String): Task[SchoolSummary]
   }
 
-//  final class Live[R] extends SkolverketService {
-//
-////    def getSchools(blazeClient: Client[Task[SchoolSummary]],
-////                   averageGrade: Int,
-////                   schoolName: String): Task[SchoolSummary] = {
-////      val EndPoint =
-////        "https://api.scb.se/UF0109/v2/skolenhetsregister/sv/skolenhet"
-////      val baseUri = Uri.uri(EndPoint)
-////      blazeClient.expect[SchoolUnitJsonRep](baseUri).map(_.toSchoolSummary)
-////
-////    }
-//
-//    override def service: Service[Any] = {
-//      override def getSchools(blazeClient: Client[Task[SchoolSummary]], averageGrade: Int, schoolName: String): Task[SchoolSummary] = ???
-//
-//      ???
-//    }
-//  }
-
-  trait Live[R] extends SkolverketService {
-    override def service: Service[Any] = new Service[R] {
-      override def getSchools(blazeClient: Client[Task[SchoolSummary]],
-                     averageGrade: Int,
-                     schoolName: String): Task[SchoolSummary] = {
-        val EndPoint =
-          "https://api.scb.se/UF0109/v2/skolenhetsregister/sv/skolenhet"
-        val baseUri = Uri.uri(EndPoint)
+  final class Live[R] extends SkolverketService[R] {
+    override def service: Service[R] =
+      (blazeClient: Client[Task], averageGrade: Int, schoolName: String) => {
+        val EndPoint = "https://api.scb.se/UF0109/v2/skolenhetsregister/sv/skolenhet"
+        val baseUri  = Uri.unsafeFromString(EndPoint)
         blazeClient.expect[SchoolUnitJsonRep](baseUri).map(_.toSchoolSummary)
       }
-    }
   }
 
   object BlazeHttpClient {
-
-    import zio._
-    import zio.interop.catz._
-    import org.http4s.client.blaze.BlazeClientBuilder
 
     def client: ZIO[Any, Nothing, Resource[Task, Client[Task]]] =
       ZIO.runtime.map { implicit r: Runtime[Any] =>
         BlazeClientBuilder[Task](r.platform.executor.asEC).resource
       }
+  }
+
+  object TestBlazeHttpClient extends App {
+
+    override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, Int] = {
+      for {
+        c <- BlazeHttpClient.client
+        _ <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = 5, schoolName = "FakeSchool"))
+              .flatMap(summary => zio.console.putStrLn(summary.toString))
+              .catchAll(th => ZIO.effectTotal(th.printStackTrace()))
+      } yield 0
+    }
+
   }
 
   object Api {
@@ -74,6 +61,8 @@ object SkolverketService {
                              schoolUnits: List[SchoolSummary.SchoolUnit])
 
     object SchoolSummary {
+
+      implicit val s: Show[SchoolSummary] = _.toString
       import SchoolUnit._
 
       case class FootNote(value: String) extends AnyVal
