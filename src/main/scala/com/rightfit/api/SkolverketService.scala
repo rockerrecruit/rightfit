@@ -12,7 +12,7 @@ import org.http4s.client._
 import org.http4s.client.blaze.BlazeClientBuilder
 import org.http4s.{EntityDecoder, EntityEncoder, Uri}
 import zio.interop.catz._
-import zio.{App, Task, ZIO, _}
+import zio._
 
 trait SkolverketService[R] {
   def service: SkolverketService.Service[R]
@@ -36,8 +36,8 @@ object SkolverketService {
   object BlazeHttpClient {
 
     def client: ZIO[Any, Nothing, Resource[Task, Client[Task]]] =
-      ZIO.runtime.map { implicit r: Runtime[Any] =>
-        BlazeClientBuilder[Task](r.platform.executor.asEC).resource
+      ZIO.runtime.map { implicit runtime: Runtime[Any] =>
+        BlazeClientBuilder[Task](runtime.platform.executor.asEC).resource
       }
   }
 
