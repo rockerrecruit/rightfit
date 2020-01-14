@@ -97,17 +97,10 @@ object SkolverketService {
     }
 
     object SchoolUnitJsonRep {
-      implicit def circeJsonDecoder[A](
-        implicit decoder: Decoder[A]
-      ): EntityDecoder[Task, A] = jsonOf[Task, A]
-
-      implicit def circeJsonEncoder[A](
-        implicit decoder: Encoder[A]
-      ): EntityEncoder[Task, A] = jsonEncoderOf[Task, A]
-
-      implicit val e: Encoder[SchoolUnitJsonRep] = semiauto.deriveEncoder
-      implicit val d: Decoder[SchoolUnitJsonRep] = semiauto.deriveDecoder
-
+      implicit val e: Encoder[SchoolUnitJsonRep]                                             = semiauto.deriveEncoder
+      implicit val d: Decoder[SchoolUnitJsonRep]                                             = semiauto.deriveDecoder
+      implicit def circeJsonDecoder[A](implicit decoder: Decoder[A]): EntityDecoder[Task, A] = jsonOf[Task, A]
+      implicit def circeJsonEncoder[A](implicit decoder: Encoder[A]): EntityEncoder[Task, A] = jsonEncoderOf[Task, A]
     }
 
     case class Skolenhet(Skolenhetskod: String, Skolenhetsnamn: String, Kommunkod: String, PeOrgNr: String)
