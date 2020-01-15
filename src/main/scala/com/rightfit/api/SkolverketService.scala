@@ -5,6 +5,7 @@ import java.time.Instant
 import cats.Show
 import cats.effect.Resource
 import com.rightfit.api.SkolverketService.Api.{SchoolSummary, SchoolUnitJsonRep}
+import com.rightfit.api.SkolverketService.{BlazeHttpClient, Live}
 import io.circe.generic.semiauto
 import io.circe.{Decoder, Encoder}
 import org.http4s.circe.{jsonEncoderOf, jsonOf}
@@ -39,19 +40,6 @@ object SkolverketService {
       ZIO.runtime.map { implicit runtime: Runtime[Any] =>
         BlazeClientBuilder[Task](runtime.platform.executor.asEC).resource
       }
-  }
-
-  object TestBlazeHttpClient extends App {
-
-    override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, Int] = {
-      for {
-        c <- BlazeHttpClient.client
-        _ <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = 5, schoolName = "FakeSchool"))
-              .flatMap(summary => zio.console.putStrLn(summary.toString))
-              .catchAll(th => ZIO.effectTotal(th.printStackTrace()))
-      } yield 0
-    }
-
   }
 
   object Api {
@@ -111,4 +99,17 @@ object SkolverketService {
     }
 
   }
+
+}
+
+object TestBlazeHttpClient extends App {
+
+  override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, Int] = {
+    (for {
+      c <- BlazeHttpClient.client
+      _ <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = 5, schoolName = "FakeSchool"))
+            .flatMap(summary => zio.console.putStrLn(summary.schoolUnits.headOption.toString))
+    } yield 0).catchAllCause(cause => zio.console.putStrLn(s"${cause.prettyPrint}").as(1))
+  }
+
 }
