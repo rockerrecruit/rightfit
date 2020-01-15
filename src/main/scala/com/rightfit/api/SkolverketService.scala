@@ -51,7 +51,7 @@ object SkolverketService {
 
       implicit val s: Show[SchoolSummary] = summary => {
         val units = summary.schoolUnits.map(unit => s"$unit\n").combineAll
-        s"Withdrawal date: ${summary.withdrawalDate.value}\nFootnote: ${summary.footNote.value}\nSchoolUnits: \n$units"
+        s"Withdrawal date: ${summary.withdrawalDate}\nFootnote: ${summary.footNote.value}\nSchoolUnits: \n$units"
       }
       import SchoolUnit._
 
