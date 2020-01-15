@@ -1,9 +1,8 @@
 package com.rightfit.api
 
-import java.time.Instant
-
 import cats.Show
 import cats.effect.Resource
+import cats.implicits._
 import com.rightfit.api.SkolverketService.Api.{SchoolSummary, SchoolUnitJsonRep}
 import com.rightfit.api.SkolverketService.{BlazeHttpClient, Live}
 import io.circe.generic.semiauto
@@ -12,8 +11,8 @@ import org.http4s.circe.{jsonEncoderOf, jsonOf}
 import org.http4s.client._
 import org.http4s.client.blaze.BlazeClientBuilder
 import org.http4s.{EntityDecoder, EntityEncoder, Uri}
-import zio.interop.catz._
 import zio._
+import zio.interop.catz._
 
 trait SkolverketService[R] {
   def service: SkolverketService.Service[R]
@@ -44,13 +43,16 @@ object SkolverketService {
 
   object Api {
 
-    case class SchoolSummary(withdrawalDate: Instant,
+    case class SchoolSummary(withdrawalDate: String,
                              footNote: SchoolSummary.FootNote,
                              schoolUnits: List[SchoolSummary.SchoolUnit])
 
     object SchoolSummary {
 
-      implicit val s: Show[SchoolSummary] = _.toString
+      implicit val s: Show[SchoolSummary] = summary => {
+        val units = summary.schoolUnits.map(unit => s"$unit\n").combineAll
+        s"Withdrawal date: ${summary.withdrawalDate.value}\nFootnote: ${summary.footNote.value}\nSchoolUnits: \n$units"
+      }
       import SchoolUnit._
 
       case class FootNote(value: String) extends AnyVal
@@ -64,7 +66,7 @@ object SkolverketService {
       }
     }
 
-    case class SchoolUnitJsonRep(Uttagsdatum: Instant, Fotnot: String, Skolenheter: List[Skolenhet]) {
+    case class SchoolUnitJsonRep(Uttagsdatum: String, Fotnot: String, Skolenheter: List[Skolenhet]) {
 
       def toSchoolSummary: SchoolSummary = {
         import SchoolSummary.SchoolUnit._
@@ -108,7 +110,7 @@ object TestBlazeHttpClient extends App {
     (for {
       c <- BlazeHttpClient.client
       _ <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = 5, schoolName = "FakeSchool"))
-            .flatMap(summary => zio.console.putStrLn(summary.schoolUnits.headOption.toString))
+            .flatMap(summary => zio.console.putStrLn(summary.show))
     } yield 0).catchAllCause(cause => zio.console.putStrLn(s"${cause.prettyPrint}").as(1))
   }
 
