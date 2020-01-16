@@ -3,6 +3,7 @@ package com.rightfit.api
 import cats.Show
 import cats.effect.Resource
 import cats.implicits._
+import com.rightfit.api.SkolverketService.Api.SchoolSummary.SchoolUnit
 import com.rightfit.api.SkolverketService.Api.{SchoolSummary, SchoolUnitJsonRep}
 import com.rightfit.api.SkolverketService.{BlazeHttpClient, Live}
 import io.circe.generic.semiauto
@@ -20,8 +21,11 @@ trait SkolverketService[R] {
 
 object SkolverketService {
 
+  sealed trait AppError
+  case class General(message: String) extends AppError
+
   trait Service[R] {
-    def getSchools(blazeClient: Client[Task], averageGrade: Int, schoolName: String): Task[SchoolSummary]
+    def getSchools(blazeClient: Client[Task], averageGrade: Int, schoolName: String): ZIO[Any, AppError, SchoolSummary]
   }
 
   final class Live[R] extends SkolverketService[R] {
@@ -29,8 +33,17 @@ object SkolverketService {
       (blazeClient: Client[Task], averageGrade: Int, schoolName: String) => {
         val EndPoint = "https://api.scb.se/UF0109/v2/skolenhetsregister/sv/skolenhet"
         val baseUri  = Uri.unsafeFromString(EndPoint)
-        blazeClient.expect[SchoolUnitJsonRep](baseUri).map(_.toSchoolSummary)
+        val schoolEndPoint: String => String = (unit: String) => s"/school-units/{schoolUnitCode}/statistics/gy/$unit"
+        for {
+          schoolSummary <- blazeClient.expect[SchoolUnitJsonRep](baseUri).map(_.toSchoolSummary).mapError(e => General(e.getMessage)): ZIO[Any, General, SchoolSummary]
+          schoolUnit    <- ZIO.fromEither(schoolSummary.schoolUnits.find(unit => unit.name.value == schoolName).toRight(General(s"Could not find unit with name: $schoolName"))): ZIO[Any, General, SchoolUnit]
+
+        } yield ???
+
+
+
       }
+
   }
 
   object BlazeHttpClient {
