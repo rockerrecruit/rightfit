@@ -10,20 +10,19 @@ import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes}
 import zio._
 import zio.interop.catz._
 
-case class ScoreData(score: Int, interest: Interest)
+case class ScoreData(score: Int, choice: PreferenceChoice)
 
 object ScoreData {
   implicit val e: Encoder[ScoreData] = deriveEncoder
   implicit val d: Decoder[ScoreData] = deriveDecoder
-
 }
 
-case class Interest(value: String) extends AnyVal
+case class PreferenceChoice(value: String) extends AnyVal
 
-object Interest {
-  implicit val s: Show[Interest] = _.value
-  implicit val e: Encoder[Interest] = deriveUnwrappedEncoder
-  implicit val d: Decoder[Interest] = deriveUnwrappedDecoder
+object PreferenceChoice {
+  implicit val s: Show[PreferenceChoice]    = _.value
+  implicit val e: Encoder[PreferenceChoice] = deriveUnwrappedEncoder
+  implicit val d: Decoder[PreferenceChoice] = deriveUnwrappedDecoder
 }
 
 final case class Api[R](rootUri: String) {
@@ -45,6 +44,7 @@ final case class Api[R](rootUri: String) {
   def route: HttpRoutes[ScoreTask] = {
 
     HttpRoutes.of[ScoreTask] {
+      case GET -> Root / "health"   => Ok()
       case GET -> Root / IntVar(id) => Ok()
       case request @ POST -> Root =>
         request.decode[ScoreData] { json =>
