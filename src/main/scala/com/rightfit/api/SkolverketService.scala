@@ -6,7 +6,7 @@ import cats.implicits._
 import com.rightfit.api.SkolverketService.Api.GymnasiumDetailedUnit.ProgramMetrics
 import com.rightfit.api.SkolverketService.Api.GymnasiumDetailedUnit.ProgramMetrics.GeneralDataType
 import com.rightfit.api.SkolverketService.Api.SchoolSummary.SchoolUnit
-import com.rightfit.api.SkolverketService.Api.{GymnasiumDetailedUnit, SchoolSummary, SchoolUnitJsonRep}
+import com.rightfit.api.SkolverketService.Api.{GymnasiumDetailedUnit, SchoolUnitJsonRep}
 import com.rightfit.api.SkolverketService.{BlazeHttpClient, Live}
 import io.circe.generic.semiauto
 import io.circe.{Decoder, Encoder}
@@ -29,32 +29,29 @@ object SkolverketService {
   case class General(message: String) extends AppError
 
   trait Service[R] {
-    def getSchools(blazeClient: Client[Task], averageGrade: Int, schoolName: String): Task[SchoolSummary]
+    def getSchools(blazeClient: Client[Task], averageGrade: Int, schoolName: String): Task[List[Api.GymnasiumUnit]]
   }
 
   final class Live[R] extends SkolverketService[R] {
     override def service: Service[R] =
-      (blazeClient: Client[Task], averageGrade: Int, schoolName: String) => {
-        val EndPoint                         = "https://api.scb.se/UF0109/v2/skolenhetsregister/sv/skolenhet?gy"
-        val endPoint2                        = (unit: String) => Uri.unsafeFromString(s"https://api.scb.se/school-units/$unit/statistics/gy")
-        val baseUri                          = Uri.unsafeFromString(EndPoint)
+      (blazeClient: Client[Task], avg: Int, schoolName: String) => {
+        val e1                               = Uri.unsafeFromString("https://api.scb.se/UF0109/v2/skolenhetsregister/sv/skolenhet?gy")
+        val e2                               = (unit: String) => Uri.unsafeFromString(s"https://api.scb.se/school-units/$unit/statistics/gy")
         val schoolEndPoint: String => String = (unit: String) => s"/school-units/{schoolUnitCode}/statistics/gy/$unit"
         for {
-          schoolSummary <- blazeClient
-                            .expect[SchoolUnitJsonRep](baseUri)
-                            .map(_.toSchoolSummary)
-          relevantSchools = ZIO.foreach(schoolSummary.schoolUnits) { unit =>
-            blazeClient
-              .expect[GymnasiumDetailedUnit](endPoint2)
-              .map(_.toGymnasiumUnit)
-              .mapError(e => General(e.getMessage))
+          schoolSummary <- blazeClient.expect[SchoolUnitJsonRep](e1).map(_.toSchoolSummary)
+          schoolsWithAvg <- ZIO.foreach(schoolSummary.schoolUnits) { unit =>
+                             blazeClient
+                               .expect[GymnasiumDetailedUnit](e2(unit.code.value))
+                               .map(_.toGymnasiumUnit(unit))
+                           //.mapError(e => General(e.getMessage))
+                           }
+          relevantSchools = schoolsWithAvg.collect {
+            case gymnasiumUnit if gymnasiumUnit.admissionAvg + 10 >= avg && gymnasiumUnit.admissionAvg - 10 <= avg =>
+              gymnasiumUnit
           }
-          //schoolUnit    <- ZIO.fromEither(schoolSummary.schoolUnits.find(unit => unit.name.value == schoolName).toRight(General(s"Could not find unit with name: $schoolName"))): ZIO[Any, General, SchoolUnit]
-
-        } yield ???
-
+        } yield relevantSchools
       }
-
   }
 
   object BlazeHttpClient {
@@ -92,7 +89,7 @@ object SkolverketService {
       }
     }
 
-    case class GymnasiumUnit(admissionAvg: Int)
+    case class GymnasiumUnit(schoolUnit: SchoolUnit, admissionAvg: Int)
 
     case class GymnasiumDetailedUnit(
       certifiedTeachersQuota: List[GeneralDataType],
@@ -103,13 +100,14 @@ object SkolverketService {
       totalNumberOfPupils: List[GeneralDataType],
     ) {
 
-      def toGymnasiumUnit: GymnasiumUnit = {
+      def toGymnasiumUnit(schoolUnit: SchoolUnit): GymnasiumUnit = {
         val avgGrade = (for {
           metric   <- programMetrics
           avg      <- metric.admissionPointAverage
           intValue = Try(avg.value.toInt).toOption
         } yield intValue).flatten.sum
-        GymnasiumUnit(avgGrade)
+
+        GymnasiumUnit(schoolUnit, avgGrade)
       }
     }
 
@@ -210,7 +208,7 @@ object TestBlazeHttpClient extends App {
     (for {
       c <- BlazeHttpClient.client
       _ <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = 5, schoolName = "FakeSchool"))
-            .flatMap(summary => zio.console.putStrLn(summary.show))
+            .flatMap(gymnasiumUnits => zio.console.putStrLn(gymnasiumUnits.toString))
     } yield 0).catchAllCause(cause => zio.console.putStrLn(s"${cause.prettyPrint}").as(1))
   }
 
