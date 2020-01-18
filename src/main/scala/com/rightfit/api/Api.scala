@@ -9,6 +9,7 @@ import io.circe.{Decoder, Encoder}
 import org.http4s.circe._
 import org.http4s.dsl.Http4sDsl
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes}
+import org.slf4j.LoggerFactory
 import zio._
 import zio.interop.catz._
 
@@ -52,14 +53,16 @@ final case class Api[R](rootUri: String) {
   import dsl._
 
   def route: HttpRoutes[ScoreTask] = {
+    val log = LoggerFactory.getLogger(getClass)
 
     HttpRoutes.of[ScoreTask] {
-      case GET -> Root / "health"   => Ok()
+      case GET -> Root / "health"  => Ok()
       case GET -> Root / IntVar(_) => Ok()
       case request @ POST -> Root =>
         request.decode[ScoreData] { json =>
           for {
             c        <- BlazeHttpClient.client
+            _        <- ZIO.effect(log.debug(s"Got request [$json]"))
             result   <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = json.score.show.toDouble))
             response <- Ok(result)
           } yield response
