@@ -31,7 +31,7 @@ object SkolverketService {
       (blazeClient: Client[Task], avg: Int) => {
 
         val e1 =
-          Uri.unsafeFromString("https://api.skolverket.se/planned-educations/school-units?size=1&typeOfSchooling=gy")
+          Uri.unsafeFromString("https://api.skolverket.se/planned-educations/school-units?size=3&typeOfSchooling=gy")
 
         val req = Request[Task](
           Method.GET,
@@ -42,25 +42,21 @@ object SkolverketService {
         val e2 = (unit: String) =>
           Uri.unsafeFromString(s"https://api.skolverket.se/planned-educations/school-units/$unit/statistics/gy")
 
-        val req2 = (uri: Uri) => Request[Task](
-          Method.GET,
-          uri,
-          headers = Headers.of(Header("Accept", s"application/vnd.skolverket.plannededucations.api.v2.hal+json"))
+        val req2 = (uri: Uri) =>
+          Request[Task](
+            Method.GET,
+            uri,
+            headers = Headers.of(Header("Accept", s"application/vnd.skolverket.plannededucations.api.v2.hal+json"))
         )
 
         for {
-          schoolSummary <- blazeClient.expect[Api.SchoolUnitSummary](req)
-          _             = println(schoolSummary)
+          schoolSummary  <- blazeClient.expect[Api.SchoolUnitSummary](req)
           schoolsWithAvg <- ZIO.foreach(schoolSummary.body._embedded.listedSchoolUnits) { u =>
-                             println(u.code)
-                             val res =
-                               blazeClient.expect[GymnasiumDetailedUnit](req2(e2(u.code))).map(_.toGymnasiumUnit(u))
-                             res.map(v => println(s"Finally here: $v"))
-                             res
-                           }
+                             blazeClient.expect[GymnasiumDetailedUnit](req2(e2(u.code))).map(_.toGymnasiumUnit(u))
+                            }
           relevantSchools = schoolsWithAvg.collect {
-            case gymnasiumUnit if gymnasiumUnit.isWithin10Avg(avg) => gymnasiumUnit
-          }
+                              case gymnasiumUnit if gymnasiumUnit.isWithin10Avg(avg) => gymnasiumUnit
+                            }
         } yield relevantSchools
       }
   }
@@ -80,7 +76,8 @@ object SkolverketService {
     case class GymnasiumUnit(schoolUnit: SchoolUnit, admissionAvg: Int) {
 
       def isWithin10Avg(averageTarget: Int): Boolean =
-        admissionAvg + 10 >= averageTarget && admissionAvg - 10 <= averageTarget
+        true
+        //admissionAvg + 100 >= averageTarget && admissionAvg - 100 <= averageTarget
     }
 
     object GymnasiumUnit {
