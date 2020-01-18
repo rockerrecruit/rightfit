@@ -1,7 +1,9 @@
 package com.rightfit.api
 
+import cats.Show
+import cats.implicits._
 import cats.effect.Resource
-import com.rightfit.api.SkolverketService.Api.GymnasiumDetailedUnit
+import com.rightfit.api.SkolverketService.Api.{GymnasiumDetailedUnit, PotentialSchools}
 import com.rightfit.api.SkolverketService.Api.GymnasiumUnit.SchoolUnit
 import com.rightfit.api.SkolverketService.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
 import com.rightfit.api.SkolverketService.{BlazeHttpClient, Live}
@@ -23,12 +25,12 @@ trait SkolverketService[R] {
 object SkolverketService {
 
   trait Service[R] {
-    def getSchools(blazeClient: Client[Task], averageGrade: Int): Task[List[Api.GymnasiumUnit]]
+    def getSchools(blazeClient: Client[Task], averageGrade: Double): Task[PotentialSchools]
   }
 
   final class Live[R] extends SkolverketService[R] {
     override def service: Service[R] =
-      (blazeClient: Client[Task], avg: Int) => {
+      (blazeClient: Client[Task], avg: Double) => {
 
         val e1 =
           Uri.unsafeFromString("https://api.skolverket.se/planned-educations/school-units?size=3&typeOfSchooling=gy")
@@ -57,7 +59,7 @@ object SkolverketService {
           relevantSchools = schoolsWithAvg.collect {
                               case gymnasiumUnit if gymnasiumUnit.isWithin10Avg(avg) => gymnasiumUnit
                             }
-        } yield relevantSchools
+        } yield PotentialSchools(relevantSchools)
       }
   }
 
@@ -73,11 +75,17 @@ object SkolverketService {
 
     case class PotentialSchools(schools: List[GymnasiumUnit])
 
-    case class GymnasiumUnit(schoolUnit: SchoolUnit, admissionAvg: Int) {
+    object PotentialSchools {
+      implicit val s: Show[PotentialSchools] = potentialSchools => {
+        potentialSchools.schools.map { school =>
+          s"School: ${school.schoolUnit.name} has average admission: ${school.admissionAvg}\n"
+        }.combineAll
+      }
+    }
 
-      def isWithin10Avg(averageTarget: Int): Boolean =
-        true
-        //admissionAvg + 100 >= averageTarget && admissionAvg - 100 <= averageTarget
+    case class GymnasiumUnit(schoolUnit: SchoolUnit, admissionAvg: Double) {
+      def isWithin10Avg(averageTarget: Double): Boolean =
+        admissionAvg + 150.0 >= averageTarget && admissionAvg - 150.0 <= averageTarget
     }
 
     object GymnasiumUnit {
@@ -95,11 +103,22 @@ object SkolverketService {
     case class GymnasiumDetailedUnit(status: String, message: String, body: GymnasiumDetailedUnit.Body) {
 
       def toGymnasiumUnit(schoolUnit: SchoolUnitRep): GymnasiumUnit = {
+
+        def parseCommaString(string: String): Option[Double] = {
+          import java.text.NumberFormat
+          import java.util.Locale
+          Try {
+            val format = NumberFormat.getInstance(Locale.FRANCE)
+            val number = format.parse(string)
+            number.doubleValue
+          }.toOption
+        }
+
         val avgGrade = (for {
-          metric   <- body.programMetrics
+          metric   <- body.programMetrics.toList
           avg      <- metric.admissionPointsAverage.toList
-          intValue = Try(avg.value.map(_.toInt)).toOption.flatten
-        } yield intValue).flatten.sum
+          value    = avg.value.flatMap(parseCommaString)
+        } yield value).flatten.sum
 
         val unit = SchoolUnit(
           SchoolUnit.Code(schoolUnit.code),
@@ -322,8 +341,8 @@ object TestBlazeHttpClient extends App {
   override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, Int] = {
     (for {
       c <- BlazeHttpClient.client
-      _ <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = 240))
-            .flatMap(gymnasiumUnits => zio.console.putStrLn(gymnasiumUnits.toString))
+      _ <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = 240.0))
+            .flatMap(potentialSchools => zio.console.putStrLn(potentialSchools.show))
     } yield 0).catchAllCause(cause => zio.console.putStrLn(s"${cause.prettyPrint}").as(1))
   }
 
