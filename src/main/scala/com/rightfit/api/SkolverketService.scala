@@ -47,24 +47,20 @@ object SkolverketService {
         )
 
         def getAllPages(page: Int): Task[List[Api.SchoolUnitSummary]] = {
-          if(page <= 14) {
-            val e1 =
-              Uri.unsafeFromString(
-                s"https://api.skolverket.se/planned-educations/school-units?page=$page&size=100&typeOfSchooling=gy"
-              )
-
-            val req = Request[Task](
+          val maxPage = if(page > 14) 14 else page
+          val res: List[Request[Task]] = List.range(0, maxPage).map { p =>
+            val e1 = Uri.unsafeFromString(
+              s"https://api.skolverket.se/planned-educations/school-units?page=$p&size=100&typeOfSchooling=gy"
+            )
+            Request[Task](
               Method.GET,
               e1,
               headers = Headers.of(Header("Accept", s"application/vnd.skolverket.plannededucations.api.v2.hal+json"))
             )
+          }
 
-            for {
-              rec  <- getAllPages(page + 1)
-              curr <- blazeClient.expect[Api.SchoolUnitSummary](req).map(summary => List(summary))
-            } yield rec ++ curr
-          } else {
-              Task.apply(List[Api.SchoolUnitSummary]())
+          ZIO.foreachParN(15)(res) { req =>
+            blazeClient.expect[Api.SchoolUnitSummary](req)
           }
 
         }
