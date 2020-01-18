@@ -37,7 +37,7 @@ object PreferenceChoice {
 
 final case class Api[R](rootUri: String) {
 
-  type ScoreTask[A] = ZIO[Any, Throwable, A]
+  type ScoreTask[A] = RIO[R, A]
 
   implicit def circeJsonDecoder[A](
     implicit decoder: Decoder[A]
