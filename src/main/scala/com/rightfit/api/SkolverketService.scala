@@ -8,6 +8,7 @@ import com.rightfit.api.SkolverketService.Api.GymnasiumUnit.SchoolUnit
 import com.rightfit.api.SkolverketService.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
 import com.rightfit.api.SkolverketService.{BlazeHttpClient, Live}
 import io.circe.generic.semiauto
+import io.circe.generic.extras.semiauto._
 import io.circe.{Decoder, Encoder}
 import org.http4s._
 import org.http4s.circe.{jsonEncoderOf, jsonOf}
@@ -76,6 +77,9 @@ object SkolverketService {
     case class PotentialSchools(schools: List[GymnasiumUnit])
 
     object PotentialSchools {
+      implicit val e: Encoder[PotentialSchools] = semiauto.deriveEncoder
+      implicit val d: Decoder[PotentialSchools] = semiauto.deriveDecoder
+
       implicit val s: Show[PotentialSchools] = potentialSchools => {
         potentialSchools.schools.map { school =>
           s"School: ${school.schoolUnit.name} has average admission: ${school.admissionAvg}\n"
@@ -89,14 +93,46 @@ object SkolverketService {
     }
 
     object GymnasiumUnit {
+
+      implicit val e: Encoder[GymnasiumUnit] = semiauto.deriveEncoder
+      implicit val d: Decoder[GymnasiumUnit] = semiauto.deriveDecoder
+
       import SchoolUnit._
       case class SchoolUnit(code: Code, name: Name, municipality: Municipality, orgNo: OrgNo)
 
       object SchoolUnit {
+
+        implicit val e: Encoder[SchoolUnit] = semiauto.deriveEncoder
+        implicit val d: Decoder[SchoolUnit] = semiauto.deriveDecoder
+
         case class Code(value: String)         extends AnyVal
+
+        object Code {
+          implicit val e: Encoder[Code] = deriveUnwrappedEncoder
+          implicit val d: Decoder[Code] = deriveUnwrappedDecoder
+        }
+
         case class Name(value: String)         extends AnyVal
+
+        object Name {
+          implicit val e: Encoder[Name] = deriveUnwrappedEncoder
+          implicit val d: Decoder[Name] = deriveUnwrappedDecoder
+        }
+
         case class Municipality(value: String) extends AnyVal
+
+        object Municipality {
+          implicit val e: Encoder[Municipality] = deriveUnwrappedEncoder
+          implicit val d: Decoder[Municipality] = deriveUnwrappedDecoder
+        }
+
         case class OrgNo(value: String)        extends AnyVal
+
+        object OrgNo {
+          implicit val e: Encoder[OrgNo] = deriveUnwrappedEncoder
+          implicit val d: Decoder[OrgNo] = deriveUnwrappedDecoder
+        }
+
       }
     }
 

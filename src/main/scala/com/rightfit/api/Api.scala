@@ -8,7 +8,7 @@ import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.{Decoder, Encoder}
 import org.http4s.circe._
 import org.http4s.dsl.Http4sDsl
-import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes}
+import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Response}
 import zio._
 import zio.interop.catz._
 
@@ -35,9 +35,9 @@ object PreferenceChoice {
   implicit val d: Decoder[PreferenceChoice] = deriveUnwrappedDecoder
 }
 
-final case class Api[R](rootUri: String) extends App {
+final case class Api[R](rootUri: String) {
 
-  type ScoreTask[A] = RIO[R, A]
+  type ScoreTask[A] = ZIO[Any, Throwable, A]
 
   implicit def circeJsonDecoder[A](
     implicit decoder: Decoder[A]
@@ -58,14 +58,12 @@ final case class Api[R](rootUri: String) extends App {
       case GET -> Root / IntVar(id) => Ok()
       case request @ POST -> Root =>
         request.decode[ScoreData] { json =>
-          (for {
-            c <- BlazeHttpClient.client
-            _ <- zio.console.putStrLn("sdfsdf")
-            _ <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = json.score.show.toDouble))
-              .flatMap(potentialSchools => zio.console.putStrLn(potentialSchools.show))
-          } yield 0).catchAllCause(cause => zio.console.putStrLn(s"${cause.prettyPrint}").as(1))
-          run(Nil)
-          Ok()
+          for {
+            c        <- BlazeHttpClient.client
+            //_        <- zio.console.putStrLn("sdfsdf")
+            result   <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = json.score.show.toDouble))
+            response <- Ok(result)
+          } yield response
         }
     }
   }
