@@ -1,19 +1,16 @@
 package com.rightfit.api
 
-import cats.Show
 import cats.effect.Resource
-import cats.implicits._
-import com.rightfit.api.SkolverketService.Api.GymnasiumDetailedUnit.ProgramMetrics
-import com.rightfit.api.SkolverketService.Api.GymnasiumDetailedUnit.ProgramMetrics.GeneralDataType
-import com.rightfit.api.SkolverketService.Api.SchoolSummary.SchoolUnit
-import com.rightfit.api.SkolverketService.Api.{GymnasiumDetailedUnit, SchoolUnitJsonRep}
+import com.rightfit.api.SkolverketService.Api.GymnasiumDetailedUnit
+import com.rightfit.api.SkolverketService.Api.GymnasiumUnit.SchoolUnit
+import com.rightfit.api.SkolverketService.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
 import com.rightfit.api.SkolverketService.{BlazeHttpClient, Live}
 import io.circe.generic.semiauto
 import io.circe.{Decoder, Encoder}
+import org.http4s._
 import org.http4s.circe.{jsonEncoderOf, jsonOf}
 import org.http4s.client._
 import org.http4s.client.blaze.BlazeClientBuilder
-import org.http4s.{EntityDecoder, EntityEncoder, Uri}
 import zio._
 import zio.interop.catz._
 
@@ -25,30 +22,44 @@ trait SkolverketService[R] {
 
 object SkolverketService {
 
-  sealed trait AppError
-  case class General(message: String) extends AppError
-
   trait Service[R] {
-    def getSchools(blazeClient: Client[Task], averageGrade: Int, schoolName: String): Task[List[Api.GymnasiumUnit]]
+    def getSchools(blazeClient: Client[Task], averageGrade: Int): Task[List[Api.GymnasiumUnit]]
   }
 
   final class Live[R] extends SkolverketService[R] {
     override def service: Service[R] =
-      (blazeClient: Client[Task], avg: Int, schoolName: String) => {
-        val e1                               = Uri.unsafeFromString("https://api.scb.se/UF0109/v2/skolenhetsregister/sv/skolenhet?gy")
-        val e2                               = (unit: String) => Uri.unsafeFromString(s"https://api.scb.se/school-units/$unit/statistics/gy")
-        val schoolEndPoint: String => String = (unit: String) => s"/school-units/{schoolUnitCode}/statistics/gy/$unit"
+      (blazeClient: Client[Task], avg: Int) => {
+
+        val e1 =
+          Uri.unsafeFromString("https://api.skolverket.se/planned-educations/school-units?size=1&typeOfSchooling=gy")
+
+        val req = Request[Task](
+          Method.GET,
+          e1,
+          headers = Headers.of(Header("Accept", s"application/vnd.skolverket.plannededucations.api.v2.hal+json"))
+        )
+
+        val e2 = (unit: String) =>
+          Uri.unsafeFromString(s"https://api.skolverket.se/planned-educations/school-units/$unit/statistics/gy")
+
+        val req2 = (uri: Uri) => Request[Task](
+          Method.GET,
+          uri,
+          headers = Headers.of(Header("Accept", s"application/vnd.skolverket.plannededucations.api.v2.hal+json"))
+        )
+
         for {
-          schoolSummary <- blazeClient.expect[SchoolUnitJsonRep](e1).map(_.toSchoolSummary)
-          schoolsWithAvg <- ZIO.foreach(schoolSummary.schoolUnits) { unit =>
-                             blazeClient
-                               .expect[GymnasiumDetailedUnit](e2(unit.code.value))
-                               .map(_.toGymnasiumUnit(unit))
-                           //.mapError(e => General(e.getMessage))
+          schoolSummary <- blazeClient.expect[Api.SchoolUnitSummary](req)
+          _             = println(schoolSummary)
+          schoolsWithAvg <- ZIO.foreach(schoolSummary.body._embedded.listedSchoolUnits) { u =>
+                             println(u.code)
+                             val res =
+                               blazeClient.expect[GymnasiumDetailedUnit](req2(e2(u.code))).map(_.toGymnasiumUnit(u))
+                             res.map(v => println(s"Finally here: $v"))
+                             res
                            }
           relevantSchools = schoolsWithAvg.collect {
-            case gymnasiumUnit if gymnasiumUnit.admissionAvg + 10 >= avg && gymnasiumUnit.admissionAvg - 10 <= avg =>
-              gymnasiumUnit
+            case gymnasiumUnit if gymnasiumUnit.isWithin10Avg(avg) => gymnasiumUnit
           }
         } yield relevantSchools
       }
@@ -64,21 +75,16 @@ object SkolverketService {
 
   object Api {
 
-    case class PotentialSchools(schools: List[SchoolSummary.SchoolUnit])
+    case class PotentialSchools(schools: List[GymnasiumUnit])
 
-    case class SchoolSummary(withdrawalDate: String,
-                             footNote: SchoolSummary.FootNote,
-                             schoolUnits: List[SchoolSummary.SchoolUnit])
+    case class GymnasiumUnit(schoolUnit: SchoolUnit, admissionAvg: Int) {
 
-    object SchoolSummary {
+      def isWithin10Avg(averageTarget: Int): Boolean =
+        admissionAvg + 10 >= averageTarget && admissionAvg - 10 <= averageTarget
+    }
 
-      implicit val s: Show[SchoolSummary] = summary => {
-        val units = summary.schoolUnits.map(unit => s"$unit\n").combineAll
-        s"Withdrawal date: ${summary.withdrawalDate}\nFootnote: ${summary.footNote.value}\nSchoolUnits: \n$units"
-      }
+    object GymnasiumUnit {
       import SchoolUnit._
-
-      case class FootNote(value: String) extends AnyVal
       case class SchoolUnit(code: Code, name: Name, municipality: Municipality, orgNo: OrgNo)
 
       object SchoolUnit {
@@ -89,113 +95,225 @@ object SkolverketService {
       }
     }
 
-    case class GymnasiumUnit(schoolUnit: SchoolUnit, admissionAvg: Int)
+    case class GymnasiumDetailedUnit(status: String, message: String, body: GymnasiumDetailedUnit.Body) {
 
-    case class GymnasiumDetailedUnit(
-      certifiedTeachersQuota: List[GeneralDataType],
-      programMetrics: List[ProgramMetrics],
-      specialEducatorsQuota: List[GeneralDataType],
-      specialTeachersPositions: List[GeneralDataType],
-      studentsPerTeacherQuota: List[GeneralDataType],
-      totalNumberOfPupils: List[GeneralDataType],
-    ) {
-
-      def toGymnasiumUnit(schoolUnit: SchoolUnit): GymnasiumUnit = {
+      def toGymnasiumUnit(schoolUnit: SchoolUnitRep): GymnasiumUnit = {
         val avgGrade = (for {
-          metric   <- programMetrics
-          avg      <- metric.admissionPointAverage
-          intValue = Try(avg.value.toInt).toOption
+          metric   <- body.programMetrics
+          avg      <- metric.admissionPointsAverage.toList
+          intValue = Try(avg.value.map(_.toInt)).toOption.flatten
         } yield intValue).flatten.sum
 
-        GymnasiumUnit(schoolUnit, avgGrade)
+        val unit = SchoolUnit(
+          SchoolUnit.Code(schoolUnit.code),
+          SchoolUnit.Name(schoolUnit.name),
+          SchoolUnit.Municipality(schoolUnit.code),
+          SchoolUnit.OrgNo(schoolUnit.code),
+        )
+
+        GymnasiumUnit(unit, avgGrade)
       }
     }
 
     object GymnasiumDetailedUnit {
 
-      implicit val e: Encoder[GymnasiumDetailedUnit]                                         = semiauto.deriveEncoder
-      implicit val d: Decoder[GymnasiumDetailedUnit]                                         = semiauto.deriveDecoder
       implicit def circeJsonDecoder[A](implicit decoder: Decoder[A]): EntityDecoder[Task, A] = jsonOf[Task, A]
       implicit def circeJsonEncoder[A](implicit decoder: Encoder[A]): EntityEncoder[Task, A] = jsonEncoderOf[Task, A]
+      implicit val e: Encoder[GymnasiumDetailedUnit]                                         = semiauto.deriveEncoder
+      implicit val d: Decoder[GymnasiumDetailedUnit]                                         = semiauto.deriveDecoder
 
-      import ProgramMetrics._
+      case class SchoolValues(value: Option[String], valueType: String, timePeriod: Option[String])
+
+      object SchoolValues {
+        implicit val e: Encoder[SchoolValues] = semiauto.deriveEncoder
+        implicit val d: Decoder[SchoolValues] = semiauto.deriveDecoder
+      }
+
+      case class Body(
+        programMetrics: Seq[ProgramMetrics],
+        specialTeacherPositions: Seq[SchoolValues],
+        studentsPerTeacherQuota: Seq[SchoolValues],
+        certifiedTeachersQuota: Seq[SchoolValues],
+        specialEducatorsQuota: Seq[SchoolValues],
+        totalNumberOfPupils: Seq[SchoolValues]
+      )
+
+      object Body {
+        implicit val e: Encoder[Body] = semiauto.deriveEncoder
+        implicit val d: Decoder[Body] = semiauto.deriveDecoder
+      }
+
+      case class Links(self: Self)
+
+      object Links {
+        implicit val e: Encoder[Links] = semiauto.deriveEncoder
+        implicit val d: Decoder[Links] = semiauto.deriveDecoder
+      }
+
       case class ProgramMetrics(
-        admissionPointAverage: List[GeneralDataType],
-        admissionPointMin: List[GeneralDataType],
-        averageResultNationalTestsSubjectENG: List[GeneralDataType],
-        averageResultNationalTestsSubjectMA1: List[GeneralDataType],
-        averageResultNationalTestsSubjectMA2: List[GeneralDataType],
-        averageResultNationalTestsSubjectSVA: List[GeneralDataType],
-        averageResultNationalTestsSubjectSVE: List[GeneralDataType],
-        certifiedTeachersQuota: List[GeneralDataType],
-        docLinks: List[DocLinks],
-        engSubjectTest: String,
-        gradePointsForStudents: List[GeneralDataType],
-        gradesPointsForStudentsWithExam: List[GeneralDataType],
-        hasLibrary: Boolean,
-        links: List[Link],
-        ma1SubjectTest: String,
-        ma2SubjectTest: String,
         programCode: String,
-        ratioOfPupilsWithExamWithin3Years: List[GeneralDataType],
-        ratioOfStudentsEligibleForUndergraduateEducation: List[GeneralDataType],
+        averageResultNationalTestsSubjectSVE: Seq[SchoolValues],
+        sveSubjectTest: Option[String],
+        averageResultNationalTestsSubjectSVA: Seq[SchoolValues],
+        svaSubjectTest: Option[String],
+        averageResultNationalTestsSubjectMA1: Seq[SchoolValues],
+        ma1SubjectTest: Option[String],
+        averageResultNationalTestsSubjectMA2: Seq[SchoolValues],
+        ma2SubjectTest: Option[String],
+        averageResultNationalTestsSubjectENG: Seq[SchoolValues],
+        engSubjectTest: Option[String],
         schoolUnit: String,
-        specialEducatorsQuota: List[GeneralDataType],
-        specialTeachersPositions: List[GeneralDataType],
-        studentsPerTeacherQuota: List[GeneralDataType],
-        svaSubjectTest: String,
-        sveSubjectTest: String,
-        totalNumberOfPupils: List[GeneralDataType],
+        specialTeacherPositions: Seq[SchoolValues],
+        studentsPerTeacherQuota: Seq[SchoolValues],
+        certifiedTeachersQuota: Seq[SchoolValues],
+        docLinks: Option[String],
+        hasLibrary: Boolean,
+        totalNumberOfPupils: Seq[SchoolValues],
+        ratioOfStudentsEligibleForUndergraduateEducation: Seq[SchoolValues],
+        gradesPointsForStudents: Seq[SchoolValues],
+        gradesPointsForStudentsWithExam: Seq[SchoolValues],
+        ratioOfPupilsWithExamWithin3Years: Seq[SchoolValues],
+        admissionPointsMin: Seq[SchoolValues],
+        admissionPointsAverage: Seq[SchoolValues],
+        specialEducatorsQuota: Seq[SchoolValues],
+        _links: Links
       )
 
       object ProgramMetrics {
-        case class GeneralDataType(timePeriod: String, value: String, valueType: String)
-        case class DocLinks(description: String, title: String, uri: String)
-        case class Link(deprecation: String,
-                        href: String,
-                        hreflang: String,
-                        media: String,
-                        rel: String,
-                        templated: Boolean,
-                        title: String,
-                        `type`: String)
+        implicit val e: Encoder[ProgramMetrics] = semiauto.deriveEncoder
+        implicit val d: Decoder[ProgramMetrics] = semiauto.deriveDecoder
+      }
 
+      case class Self(href: String)
+
+      object Self {
+        implicit val e: Encoder[Self] = semiauto.deriveEncoder
+        implicit val d: Decoder[Self] = semiauto.deriveDecoder
       }
 
     }
 
-    case class SchoolUnitJsonRep(Uttagsdatum: String, Fotnot: String, Skolenheter: List[Skolenhet]) {
+    case class SchoolUnitSummary(status: String, message: String, body: SchoolUnitSummary.Body)
 
-      def toSchoolSummary: SchoolSummary = {
-        import SchoolSummary.SchoolUnit._
-        SchoolSummary(
-          Uttagsdatum,
-          SchoolSummary.FootNote(Fotnot),
-          Skolenheter.map { enhet =>
-            SchoolSummary.SchoolUnit(
-              Code(enhet.Kommunkod),
-              Name(enhet.Skolenhetsnamn),
-              Municipality(enhet.Kommunkod),
-              OrgNo(enhet.PeOrgNr)
-            )
-          }
-        )
-      }
+    object SchoolUnitSummary {
 
-    }
-
-    object SchoolUnitJsonRep {
-      implicit val e: Encoder[SchoolUnitJsonRep]                                             = semiauto.deriveEncoder
-      implicit val d: Decoder[SchoolUnitJsonRep]                                             = semiauto.deriveDecoder
       implicit def circeJsonDecoder[A](implicit decoder: Decoder[A]): EntityDecoder[Task, A] = jsonOf[Task, A]
       implicit def circeJsonEncoder[A](implicit decoder: Encoder[A]): EntityEncoder[Task, A] = jsonEncoderOf[Task, A]
-    }
+      implicit val e: Encoder[SchoolUnitSummary]                                             = semiauto.deriveEncoder
+      implicit val d: Decoder[SchoolUnitSummary]                                             = semiauto.deriveDecoder
 
-    case class Skolenhet(Skolenhetskod: String, Skolenhetsnamn: String, Kommunkod: String, PeOrgNr: String)
+      case class Body(_embedded: Body.Embedded, _links: Body.Links, page: Body.Page)
 
-    object Skolenhet {
-      implicit val e: Encoder[Skolenhet] = semiauto.deriveEncoder
-      implicit val d: Decoder[Skolenhet] = semiauto.deriveDecoder
+      object Body {
+        implicit val e: Encoder[Body] = semiauto.deriveEncoder
+        implicit val d: Decoder[Body] = semiauto.deriveDecoder
+
+        case class Page(size: Int, totalElements: Int, totalPages: Int, number: Int)
+
+        object Page {
+          implicit val e: Encoder[Page] = semiauto.deriveEncoder
+          implicit val d: Decoder[Page] = semiauto.deriveDecoder
+        }
+
+        case class Links(first: Links.First, self: Links.Self, next: Links.Next, last: Links.Last)
+
+        object Links {
+
+          implicit val e: Encoder[Links] = semiauto.deriveEncoder
+          implicit val d: Decoder[Links] = semiauto.deriveDecoder
+
+          case class First(href: String)
+
+          object First {
+            implicit val e: Encoder[First] = semiauto.deriveEncoder
+            implicit val d: Decoder[First] = semiauto.deriveDecoder
+          }
+
+          case class Self(href: String)
+
+          object Self {
+            implicit val e: Encoder[Self] = semiauto.deriveEncoder
+            implicit val d: Decoder[Self] = semiauto.deriveDecoder
+          }
+
+          case class Next(href: String)
+
+          object Next {
+            implicit val e: Encoder[Next] = semiauto.deriveEncoder
+            implicit val d: Decoder[Next] = semiauto.deriveDecoder
+          }
+
+          case class Last(href: String)
+
+          object Last {
+            implicit val e: Encoder[Last] = semiauto.deriveEncoder
+            implicit val d: Decoder[Last] = semiauto.deriveDecoder
+          }
+
+        }
+
+        case class Embedded(listedSchoolUnits: List[Embedded.SchoolUnitRep])
+
+        object Embedded {
+          implicit val e: Encoder[Embedded] = semiauto.deriveEncoder
+          implicit val d: Decoder[Embedded] = semiauto.deriveDecoder
+
+          case class SchoolUnitRep(
+            code: String,
+            geographicalAreaCode: String,
+            _links: SchoolUnitRep.Link,
+            name: String,
+            //          postCodeDistrict: String,
+            //          principalOrganizerType: String,
+            //          studentsPerTeacherQuota: String,
+            //          typeOfSchooling: List[SchoolUnitRep.TypeOfSchooling]
+          )
+
+          object SchoolUnitRep {
+
+            implicit val e: Encoder[SchoolUnitRep] = semiauto.deriveEncoder
+            implicit val d: Decoder[SchoolUnitRep] = semiauto.deriveDecoder
+
+            case class Link(
+              self: Link.Self,
+              statistics: Link.Statistics
+            )
+
+            object Link {
+              implicit val e: Encoder[Link] = semiauto.deriveEncoder
+              implicit val d: Decoder[Link] = semiauto.deriveDecoder
+
+              case class Self(href: String)
+
+              object Self {
+                implicit val e: Encoder[Self] = semiauto.deriveEncoder
+                implicit val d: Decoder[Self] = semiauto.deriveDecoder
+              }
+
+              case class Statistics(href: String)
+
+              object Statistics {
+                implicit val e: Encoder[Statistics] = semiauto.deriveEncoder
+                implicit val d: Decoder[Statistics] = semiauto.deriveDecoder
+              }
+            }
+
+            case class TypeOfSchooling(
+              code: String,
+              displayName: String,
+              schoolYears: List[String]
+            )
+
+            object TypeOfSchooling {
+              implicit val e: Encoder[TypeOfSchooling] = semiauto.deriveEncoder
+              implicit val d: Decoder[TypeOfSchooling] = semiauto.deriveDecoder
+            }
+
+          }
+
+        }
+      }
+
     }
 
   }
@@ -207,7 +325,7 @@ object TestBlazeHttpClient extends App {
   override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, Int] = {
     (for {
       c <- BlazeHttpClient.client
-      _ <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = 5, schoolName = "FakeSchool"))
+      _ <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = 240))
             .flatMap(gymnasiumUnits => zio.console.putStrLn(gymnasiumUnits.toString))
     } yield 0).catchAllCause(cause => zio.console.putStrLn(s"${cause.prettyPrint}").as(1))
   }
