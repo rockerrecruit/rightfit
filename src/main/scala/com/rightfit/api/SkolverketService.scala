@@ -150,11 +150,13 @@ object SkolverketService {
           }.toOption
         }
 
-        val avgGrade = (for {
+        val avgList = (for {
           metric   <- body.programMetrics.toList
           avg      <- metric.admissionPointsAverage.toList
           value    = avg.value.flatMap(parseCommaString)
-        } yield value).flatten.sum
+        } yield value).flatten
+
+        val avgGrade = avgList.sum / avgList.size
 
         val unit = SchoolUnit(
           SchoolUnit.Code(schoolUnit.code),
