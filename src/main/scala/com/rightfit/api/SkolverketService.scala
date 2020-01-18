@@ -36,12 +36,6 @@ object SkolverketService {
         val e1 =
           Uri.unsafeFromString("https://api.skolverket.se/planned-educations/school-units?size=3&typeOfSchooling=gy")
 
-        val req = Request[Task](
-          Method.GET,
-          e1,
-          headers = Headers.of(Header("Accept", s"application/vnd.skolverket.plannededucations.api.v2.hal+json"))
-        )
-
         val e2 = (unit: String) =>
           Uri.unsafeFromString(s"https://api.skolverket.se/planned-educations/school-units/$unit/statistics/gy")
 
@@ -52,15 +46,44 @@ object SkolverketService {
             headers = Headers.of(Header("Accept", s"application/vnd.skolverket.plannededucations.api.v2.hal+json"))
         )
 
+        def getAllPages(page: Int): Task[List[Api.SchoolUnitSummary]] = {
+          if(page <= 14) {
+            val e1 =
+              Uri.unsafeFromString(
+                s"https://api.skolverket.se/planned-educations/school-units?page=$page&size=100&typeOfSchooling=gy"
+              )
+
+            val req = Request[Task](
+              Method.GET,
+              e1,
+              headers = Headers.of(Header("Accept", s"application/vnd.skolverket.plannededucations.api.v2.hal+json"))
+            )
+
+            for {
+              rec  <- getAllPages(page + 1)
+              curr <- blazeClient.expect[Api.SchoolUnitSummary](req).map(summary => List(summary))
+            } yield rec ++ curr
+          } else {
+              Task.apply(List[Api.SchoolUnitSummary]())
+          }
+
+        }
         for {
-          schoolSummary  <- blazeClient.expect[Api.SchoolUnitSummary](req)
-          schoolsWithAvg <- ZIO.foreach(schoolSummary.body._embedded.listedSchoolUnits) { u =>
-                             blazeClient.expect[GymnasiumDetailedUnit](req2(e2(u.code))).map(_.toGymnasiumUnit(u))
-                            }
-          relevantSchools = schoolsWithAvg.collect {
-                              case gymnasiumUnit if gymnasiumUnit.isWithin10Avg(avg) => gymnasiumUnit
-                            }
-        } yield PotentialSchools(relevantSchools)
+          schoolSummaries  <- getAllPages(page = 14)
+          res              <- ZIO.foreach(schoolSummaries) { schoolSummary =>
+                                for {
+                                  schoolsWithAvg <- ZIO.foreach(schoolSummary.body._embedded.listedSchoolUnits) { u =>
+                                                      blazeClient.expect[GymnasiumDetailedUnit](req2(e2(u.code)))
+                                                        .map(v => List(v.toGymnasiumUnit(u)))
+                                                        .fold(_ => Nil, identity)
+                                                     }
+                                  relevantSchools = schoolsWithAvg.flatten.collect {
+                                                      case gymnasiumUnit if gymnasiumUnit.isWithin10Avg(avg) =>
+                                                        gymnasiumUnit
+                                                     }
+                                } yield relevantSchools
+                              }
+        } yield PotentialSchools(res.flatten)
       }
   }
 
@@ -89,7 +112,7 @@ object SkolverketService {
 
     case class GymnasiumUnit(schoolUnit: SchoolUnit, admissionAvg: Double) {
       def isWithin10Avg(averageTarget: Double): Boolean =
-        admissionAvg + 150.0 >= averageTarget && admissionAvg - 150.0 <= averageTarget
+        admissionAvg + 10.0 >= averageTarget && admissionAvg - 10.0 <= averageTarget
     }
 
     object GymnasiumUnit {
@@ -269,7 +292,7 @@ object SkolverketService {
           implicit val d: Decoder[Page] = semiauto.deriveDecoder
         }
 
-        case class Links(first: Links.First, self: Links.Self, next: Links.Next, last: Links.Last)
+        case class Links(first: Links.First, self: Links.Self, next: Option[Links.Next], last: Links.Last)
 
         object Links {
 

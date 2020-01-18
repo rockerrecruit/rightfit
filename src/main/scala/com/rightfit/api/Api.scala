@@ -8,7 +8,7 @@ import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.{Decoder, Encoder}
 import org.http4s.circe._
 import org.http4s.dsl.Http4sDsl
-import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Response}
+import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes}
 import zio._
 import zio.interop.catz._
 
