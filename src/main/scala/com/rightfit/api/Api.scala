@@ -55,12 +55,11 @@ final case class Api[R](rootUri: String) {
 
     HttpRoutes.of[ScoreTask] {
       case GET -> Root / "health"   => Ok()
-      case GET -> Root / IntVar(id) => Ok()
+      case GET -> Root / IntVar(_) => Ok()
       case request @ POST -> Root =>
         request.decode[ScoreData] { json =>
           for {
             c        <- BlazeHttpClient.client
-            //_        <- zio.console.putStrLn("sdfsdf")
             result   <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = json.score.show.toDouble))
             response <- Ok(result)
           } yield response
