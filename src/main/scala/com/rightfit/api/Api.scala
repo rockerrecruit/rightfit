@@ -10,12 +10,21 @@ import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes}
 import zio._
 import zio.interop.catz._
 
-case class ScoreData(score: Int, choice: PreferenceChoice)
+case class ScoreData(score: Points, choice: PreferenceChoice)
 
 object ScoreData {
   implicit val e: Encoder[ScoreData] = deriveEncoder
   implicit val d: Decoder[ScoreData] = deriveDecoder
 }
+
+case class Points(value: String) extends AnyVal
+
+object Points {
+  implicit val s: Show[Points] = _.value
+  implicit val e: Encoder[Points] = deriveUnwrappedEncoder
+  implicit val d: Decoder[Points] = deriveUnwrappedDecoder
+}
+
 
 case class PreferenceChoice(value: String) extends AnyVal
 
