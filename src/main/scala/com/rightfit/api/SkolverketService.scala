@@ -33,9 +33,6 @@ object SkolverketService {
     override def service: Service[R] =
       (blazeClient: Client[Task], avg: Double) => {
 
-        val e1 =
-          Uri.unsafeFromString("https://api.skolverket.se/planned-educations/school-units?size=3&typeOfSchooling=gy")
-
         val e2 = (unit: String) =>
           Uri.unsafeFromString(s"https://api.skolverket.se/planned-educations/school-units/$unit/statistics/gy")
 
@@ -46,9 +43,9 @@ object SkolverketService {
             headers = Headers.of(Header("Accept", s"application/vnd.skolverket.plannededucations.api.v2.hal+json"))
         )
 
-        def getAllPages(page: Int): Task[List[Api.SchoolUnitSummary]] = {
+        def getSchoolsByPage(page: Int): Task[List[Api.SchoolUnitSummary]] = {
           val maxPage = if(page > 14) 14 else page
-          val res: List[Request[Task]] = List.range(0, maxPage).map { p =>
+          val requests = List.range(0, maxPage).map { p =>
             val e1 = Uri.unsafeFromString(
               s"https://api.skolverket.se/planned-educations/school-units?page=$p&size=100&typeOfSchooling=gy"
             )
@@ -59,16 +56,14 @@ object SkolverketService {
             )
           }
 
-          ZIO.foreachParN(15)(res) { req =>
-            blazeClient.expect[Api.SchoolUnitSummary](req)
-          }
-
+          ZIO.foreachParN(15)(requests)(req => blazeClient.expect[Api.SchoolUnitSummary](req))
         }
+
         for {
-          schoolSummaries  <- getAllPages(page = 14)
-          res              <- ZIO.foreach(schoolSummaries) { schoolSummary =>
+          schoolSummaries  <- getSchoolsByPage(page = 14)
+          gymnasiumUnits   <- ZIO.foreach(schoolSummaries) { summary =>
                                 for {
-                                  schoolsWithAvg <- ZIO.foreachParN(15)(schoolSummary.body._embedded.listedSchoolUnits) { u =>
+                                  schoolsWithAvg <- ZIO.foreachParN(15)(summary.body._embedded.listedSchoolUnits) { u =>
                                                       blazeClient.expect[GymnasiumDetailedUnit](req2(e2(u.code)))
                                                         .map(v => List(v.toGymnasiumUnit(u)))
                                                         .fold(_ => Nil, identity)
@@ -78,8 +73,8 @@ object SkolverketService {
                                                         gymnasiumUnit
                                                      }
                                 } yield relevantSchools
-                              }
-        } yield PotentialSchools(res.flatten)
+                              }.map(_.flatten)
+        } yield PotentialSchools(gymnasiumUnits)
       }
   }
 
@@ -180,7 +175,7 @@ object SkolverketService {
         val unit = SchoolUnit(
           SchoolUnit.Code(schoolUnit.code),
           SchoolUnit.Name(schoolUnit.name),
-          SchoolUnit.Municipality(schoolUnit.code),
+          SchoolUnit.Municipality(schoolUnit.geographicalAreaCode),
           SchoolUnit.OrgNo(schoolUnit.code),
         )
 
@@ -400,7 +395,7 @@ object TestBlazeHttpClient extends App {
       c <- BlazeHttpClient.client
       _ <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = 240.0))
             .flatMap(potentialSchools => zio.console.putStrLn(potentialSchools.show))
-    } yield 0).catchAllCause(cause => zio.console.putStrLn(s"${cause.prettyPrint}").as(1))
+    } yield 0).catchAllCause(cause => zio.console.putStrLn(cause.prettyPrint).as(1))
   }
 
 }
