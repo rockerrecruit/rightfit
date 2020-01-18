@@ -1,14 +1,14 @@
 package com.rightfit.api
 
 import cats.Show
-import cats.implicits._
 import cats.effect.Resource
-import com.rightfit.api.SkolverketService.Api.{GymnasiumDetailedUnit, PotentialSchools}
+import cats.implicits._
 import com.rightfit.api.SkolverketService.Api.GymnasiumUnit.SchoolUnit
 import com.rightfit.api.SkolverketService.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
+import com.rightfit.api.SkolverketService.Api.{GymnasiumDetailedUnit, PotentialSchools}
 import com.rightfit.api.SkolverketService.{BlazeHttpClient, Live}
-import io.circe.generic.semiauto
 import io.circe.generic.extras.semiauto._
+import io.circe.generic.semiauto
 import io.circe.{Decoder, Encoder}
 import org.http4s._
 import org.http4s.circe.{jsonEncoderOf, jsonOf}
@@ -72,7 +72,7 @@ object SkolverketService {
           schoolSummaries  <- getAllPages(page = 14)
           res              <- ZIO.foreach(schoolSummaries) { schoolSummary =>
                                 for {
-                                  schoolsWithAvg <- ZIO.foreach(schoolSummary.body._embedded.listedSchoolUnits) { u =>
+                                  schoolsWithAvg <- ZIO.foreachParN(15)(schoolSummary.body._embedded.listedSchoolUnits) { u =>
                                                       blazeClient.expect[GymnasiumDetailedUnit](req2(e2(u.code)))
                                                         .map(v => List(v.toGymnasiumUnit(u)))
                                                         .fold(_ => Nil, identity)
