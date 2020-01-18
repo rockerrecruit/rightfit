@@ -1,6 +1,8 @@
 package com.rightfit.api
 
 import cats.Show
+import cats.implicits.toShow
+import com.rightfit.api.SkolverketService.{BlazeHttpClient, Live}
 import io.circe.generic.extras.semiauto.{deriveUnwrappedDecoder, deriveUnwrappedEncoder}
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.{Decoder, Encoder}
@@ -20,11 +22,10 @@ object ScoreData {
 case class Points(value: String) extends AnyVal
 
 object Points {
-  implicit val s: Show[Points] = _.value
+  implicit val s: Show[Points]    = _.value
   implicit val e: Encoder[Points] = deriveUnwrappedEncoder
   implicit val d: Decoder[Points] = deriveUnwrappedDecoder
 }
-
 
 case class PreferenceChoice(value: String) extends AnyVal
 
@@ -34,7 +35,7 @@ object PreferenceChoice {
   implicit val d: Decoder[PreferenceChoice] = deriveUnwrappedDecoder
 }
 
-final case class Api[R](rootUri: String) {
+final case class Api[R](rootUri: String) extends App {
 
   type ScoreTask[A] = RIO[R, A]
 
@@ -57,7 +58,13 @@ final case class Api[R](rootUri: String) {
       case GET -> Root / IntVar(id) => Ok()
       case request @ POST -> Root =>
         request.decode[ScoreData] { json =>
-          println(s"Read score data: [$json]")
+          (for {
+            c <- BlazeHttpClient.client
+            _ <- zio.console.putStrLn("sdfsdf")
+            _ <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = json.score.show.toDouble))
+              .flatMap(potentialSchools => zio.console.putStrLn(potentialSchools.show))
+          } yield 0).catchAllCause(cause => zio.console.putStrLn(s"${cause.prettyPrint}").as(1))
+          run(Nil)
           Ok()
         }
     }
