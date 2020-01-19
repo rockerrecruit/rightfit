@@ -44,8 +44,8 @@ object SkolverketClient {
         )
 
         def getSchoolsByPage(page: Int): Task[List[Api.SchoolUnitSummary]] = {
-          val maxPage = if(page > 14) 14 else page
-          val requests = List.range(1, maxPage).map { p =>
+          val maxPage = if (page > 14) 14 else page
+          val requests = List.range(0, maxPage).map { p =>
             val e1 = Uri.unsafeFromString(
               s"https://api.skolverket.se/planned-educations/school-units?page=$p&size=100&typeOfSchooling=gy"
             )
@@ -95,9 +95,17 @@ object SkolverketClient {
       implicit val d: Decoder[PotentialSchools] = semiauto.deriveDecoder
 
       implicit val s: Show[PotentialSchools] = potentialSchools => {
-        potentialSchools.schools.map { school =>
-          s"School: ${school.schoolUnit.name} has average admission: ${school.admissionAvg}\n"
-        }.combineAll
+        potentialSchools.schools match {
+          case _ :: _ =>
+            potentialSchools.schools
+              .map { school =>
+                s"School: ${school.schoolUnit.name.value} has average admission: ${school.admissionAvg}\n"
+              }
+              .prepended("\n")
+              .combineAll
+          case Nil =>
+            s"No potential schools found."
+        }
       }
     }
 
@@ -191,73 +199,74 @@ object SkolverketClient {
       implicit val e: Encoder[GymnasiumDetailedUnit]                                         = semiauto.deriveEncoder
       implicit val d: Decoder[GymnasiumDetailedUnit]                                         = semiauto.deriveDecoder
 
-      case class SchoolValues(value: Option[String], valueType: String, timePeriod: Option[String])
-
-      object SchoolValues {
-        implicit val e: Encoder[SchoolValues] = semiauto.deriveEncoder
-        implicit val d: Decoder[SchoolValues] = semiauto.deriveDecoder
-      }
-
       case class Body(
-        programMetrics: Seq[ProgramMetrics],
-        specialTeacherPositions: Seq[SchoolValues],
-        studentsPerTeacherQuota: Seq[SchoolValues],
-        certifiedTeachersQuota: Seq[SchoolValues],
-        specialEducatorsQuota: Seq[SchoolValues],
-        totalNumberOfPupils: Seq[SchoolValues]
+        programMetrics: Seq[Body.ProgramMetrics],
+        specialTeacherPositions: Seq[Body.SchoolValues],
+        studentsPerTeacherQuota: Seq[Body.SchoolValues],
+        certifiedTeachersQuota: Seq[Body.SchoolValues],
+        specialEducatorsQuota: Seq[Body.SchoolValues],
+        totalNumberOfPupils: Seq[Body.SchoolValues]
       )
 
       object Body {
         implicit val e: Encoder[Body] = semiauto.deriveEncoder
         implicit val d: Decoder[Body] = semiauto.deriveDecoder
-      }
 
-      case class Links(self: Self)
+        case class SchoolValues(value: Option[String], valueType: String, timePeriod: Option[String])
 
-      object Links {
-        implicit val e: Encoder[Links] = semiauto.deriveEncoder
-        implicit val d: Decoder[Links] = semiauto.deriveDecoder
-      }
+        object SchoolValues {
+          implicit val e: Encoder[SchoolValues] = semiauto.deriveEncoder
+          implicit val d: Decoder[SchoolValues] = semiauto.deriveDecoder
+        }
 
-      case class ProgramMetrics(
-        programCode: String,
-        averageResultNationalTestsSubjectSVE: Seq[SchoolValues],
-        sveSubjectTest: Option[String],
-        averageResultNationalTestsSubjectSVA: Seq[SchoolValues],
-        svaSubjectTest: Option[String],
-        averageResultNationalTestsSubjectMA1: Seq[SchoolValues],
-        ma1SubjectTest: Option[String],
-        averageResultNationalTestsSubjectMA2: Seq[SchoolValues],
-        ma2SubjectTest: Option[String],
-        averageResultNationalTestsSubjectENG: Seq[SchoolValues],
-        engSubjectTest: Option[String],
-        schoolUnit: String,
-        specialTeacherPositions: Seq[SchoolValues],
-        studentsPerTeacherQuota: Seq[SchoolValues],
-        certifiedTeachersQuota: Seq[SchoolValues],
-        docLinks: Option[String],
-        hasLibrary: Boolean,
-        totalNumberOfPupils: Seq[SchoolValues],
-        ratioOfStudentsEligibleForUndergraduateEducation: Seq[SchoolValues],
-        gradesPointsForStudents: Seq[SchoolValues],
-        gradesPointsForStudentsWithExam: Seq[SchoolValues],
-        ratioOfPupilsWithExamWithin3Years: Seq[SchoolValues],
-        admissionPointsMin: Seq[SchoolValues],
-        admissionPointsAverage: Seq[SchoolValues],
-        specialEducatorsQuota: Seq[SchoolValues],
-        _links: Links
-      )
+        case class ProgramMetrics(
+          programCode: String,
+          averageResultNationalTestsSubjectSVE: Seq[SchoolValues],
+          sveSubjectTest: Option[String],
+          averageResultNationalTestsSubjectSVA: Seq[SchoolValues],
+          svaSubjectTest: Option[String],
+          averageResultNationalTestsSubjectMA1: Seq[SchoolValues],
+          ma1SubjectTest: Option[String],
+          averageResultNationalTestsSubjectMA2: Seq[SchoolValues],
+          ma2SubjectTest: Option[String],
+          averageResultNationalTestsSubjectENG: Seq[SchoolValues],
+          engSubjectTest: Option[String],
+          schoolUnit: String,
+          specialTeacherPositions: Seq[SchoolValues],
+          studentsPerTeacherQuota: Seq[SchoolValues],
+          certifiedTeachersQuota: Seq[SchoolValues],
+          docLinks: Option[String],
+          hasLibrary: Boolean,
+          totalNumberOfPupils: Seq[SchoolValues],
+          ratioOfStudentsEligibleForUndergraduateEducation: Seq[SchoolValues],
+          gradesPointsForStudents: Seq[SchoolValues],
+          gradesPointsForStudentsWithExam: Seq[SchoolValues],
+          ratioOfPupilsWithExamWithin3Years: Seq[SchoolValues],
+          admissionPointsMin: Seq[SchoolValues],
+          admissionPointsAverage: Seq[SchoolValues],
+          specialEducatorsQuota: Seq[SchoolValues],
+          _links: ProgramMetrics.Links
+        )
 
-      object ProgramMetrics {
-        implicit val e: Encoder[ProgramMetrics] = semiauto.deriveEncoder
-        implicit val d: Decoder[ProgramMetrics] = semiauto.deriveDecoder
-      }
+        object ProgramMetrics {
+          implicit val e: Encoder[ProgramMetrics] = semiauto.deriveEncoder
+          implicit val d: Decoder[ProgramMetrics] = semiauto.deriveDecoder
 
-      case class Self(href: String)
+          case class Links(self: Links.Self)
 
-      object Self {
-        implicit val e: Encoder[Self] = semiauto.deriveEncoder
-        implicit val d: Decoder[Self] = semiauto.deriveDecoder
+          object Links {
+            implicit val e: Encoder[Links] = semiauto.deriveEncoder
+            implicit val d: Decoder[Links] = semiauto.deriveDecoder
+
+            case class Self(href: String)
+
+            object Self {
+              implicit val e: Encoder[Self] = semiauto.deriveEncoder
+              implicit val d: Decoder[Self] = semiauto.deriveDecoder
+            }
+          }
+        }
+
       }
 
     }
@@ -332,10 +341,6 @@ object SkolverketClient {
             geographicalAreaCode: String,
             _links: SchoolUnitRep.Link,
             name: String,
-            //          postCodeDistrict: String,
-            //          principalOrganizerType: String,
-            //          studentsPerTeacherQuota: String,
-            //          typeOfSchooling: List[SchoolUnitRep.TypeOfSchooling]
           )
 
           object SchoolUnitRep {
@@ -343,10 +348,7 @@ object SkolverketClient {
             implicit val e: Encoder[SchoolUnitRep] = semiauto.deriveEncoder
             implicit val d: Decoder[SchoolUnitRep] = semiauto.deriveDecoder
 
-            case class Link(
-              self: Link.Self,
-              statistics: Link.Statistics
-            )
+            case class Link(self: Link.Self, statistics: Link.Statistics)
 
             object Link {
               implicit val e: Encoder[Link] = semiauto.deriveEncoder
@@ -377,16 +379,12 @@ object SkolverketClient {
               implicit val e: Encoder[TypeOfSchooling] = semiauto.deriveEncoder
               implicit val d: Decoder[TypeOfSchooling] = semiauto.deriveDecoder
             }
-
           }
-
         }
       }
-
     }
 
   }
-
 }
 
 object TestBlazeHttpClient extends App {

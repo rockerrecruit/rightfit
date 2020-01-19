@@ -13,30 +13,33 @@ import org.slf4j.LoggerFactory
 import zio._
 import zio.interop.catz._
 
-case class ScoreData(score: Points, choice: PreferenceChoice)
+object Server {
+  case class ScoreData(score: Points, choice: PreferenceChoice)
 
-object ScoreData {
-  implicit val e: Encoder[ScoreData] = deriveEncoder
-  implicit val d: Decoder[ScoreData] = deriveDecoder
-}
+  object ScoreData {
+    implicit val e: Encoder[ScoreData] = deriveEncoder
+    implicit val d: Decoder[ScoreData] = deriveDecoder
+  }
 
-case class Points(value: String) extends AnyVal
+  case class Points(value: String) extends AnyVal
 
-object Points {
-  implicit val s: Show[Points]    = _.value
-  implicit val e: Encoder[Points] = deriveUnwrappedEncoder
-  implicit val d: Decoder[Points] = deriveUnwrappedDecoder
-}
+  object Points {
+    implicit val s: Show[Points]    = _.value
+    implicit val e: Encoder[Points] = deriveUnwrappedEncoder
+    implicit val d: Decoder[Points] = deriveUnwrappedDecoder
+  }
 
-case class PreferenceChoice(value: String) extends AnyVal
+  case class PreferenceChoice(value: String) extends AnyVal
 
-object PreferenceChoice {
-  implicit val s: Show[PreferenceChoice]    = _.value
-  implicit val e: Encoder[PreferenceChoice] = deriveUnwrappedEncoder
-  implicit val d: Decoder[PreferenceChoice] = deriveUnwrappedDecoder
+  object PreferenceChoice {
+    implicit val s: Show[PreferenceChoice]    = _.value
+    implicit val e: Encoder[PreferenceChoice] = deriveUnwrappedEncoder
+    implicit val d: Decoder[PreferenceChoice] = deriveUnwrappedDecoder
+  }
 }
 
 final case class Server[R](rootUri: String) {
+  import Server._
 
   type ScoreTask[A] = RIO[R, A]
 
@@ -58,7 +61,7 @@ final case class Server[R](rootUri: String) {
             c        <- BlazeHttpClient.client
             _        <- ZIO.effect(log.debug(s"Got request [$json]"))
             result   <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = json.score.show.toDouble))
-            _        <- ZIO.effect(log.debug(s"Responding client..."))
+            _        <- ZIO.effect(log.debug(s"Responding client with: ${result.show}"))
             response <- Ok(result)
           } yield response
         }
