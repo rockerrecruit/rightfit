@@ -45,7 +45,7 @@ object SkolverketService {
 
         def getSchoolsByPage(page: Int): Task[List[Api.SchoolUnitSummary]] = {
           val maxPage = if(page > 14) 14 else page
-          val requests = List.range(0, maxPage).map { p =>
+          val requests = List.range(1, maxPage).map { p =>
             val e1 = Uri.unsafeFromString(
               s"https://api.skolverket.se/planned-educations/school-units?page=$p&size=100&typeOfSchooling=gy"
             )
@@ -60,7 +60,7 @@ object SkolverketService {
         }
 
         for {
-          schoolSummaries  <- getSchoolsByPage(page = 14)
+          schoolSummaries  <- getSchoolsByPage(page = 1)
           gymnasiumUnits   <- ZIO.foreach(schoolSummaries) { summary =>
                                 for {
                                   schoolsWithAvg <- ZIO.foreachParN(15)(summary.body._embedded.listedSchoolUnits) { u =>
@@ -102,6 +102,7 @@ object SkolverketService {
     }
 
     case class GymnasiumUnit(schoolUnit: SchoolUnit, admissionAvg: Double) {
+
       def isWithin10Avg(averageTarget: Double): Boolean =
         admissionAvg + 10.0 >= averageTarget && admissionAvg - 10.0 <= averageTarget
     }
@@ -119,14 +120,14 @@ object SkolverketService {
         implicit val e: Encoder[SchoolUnit] = semiauto.deriveEncoder
         implicit val d: Decoder[SchoolUnit] = semiauto.deriveDecoder
 
-        case class Code(value: String)         extends AnyVal
+        case class Code(value: String) extends AnyVal
 
         object Code {
           implicit val e: Encoder[Code] = deriveUnwrappedEncoder
           implicit val d: Decoder[Code] = deriveUnwrappedDecoder
         }
 
-        case class Name(value: String)         extends AnyVal
+        case class Name(value: String) extends AnyVal
 
         object Name {
           implicit val e: Encoder[Name] = deriveUnwrappedEncoder
@@ -140,7 +141,7 @@ object SkolverketService {
           implicit val d: Decoder[Municipality] = deriveUnwrappedDecoder
         }
 
-        case class OrgNo(value: String)        extends AnyVal
+        case class OrgNo(value: String) extends AnyVal
 
         object OrgNo {
           implicit val e: Encoder[OrgNo] = deriveUnwrappedEncoder
@@ -165,9 +166,9 @@ object SkolverketService {
         }
 
         val avgList = (for {
-          metric   <- body.programMetrics.toList
-          avg      <- metric.admissionPointsAverage.toList
-          value    = avg.value.flatMap(parseCommaString)
+          metric <- body.programMetrics.toList
+          avg    <- metric.admissionPointsAverage.toList
+          value  = avg.value.flatMap(parseCommaString)
         } yield value).flatten
 
         val avgGrade = avgList.sum / avgList.size

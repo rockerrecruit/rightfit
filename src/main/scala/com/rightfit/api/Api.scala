@@ -39,28 +39,22 @@ final case class Api[R](rootUri: String) {
 
   type ScoreTask[A] = RIO[R, A]
 
-  implicit def circeJsonDecoder[A](
-    implicit decoder: Decoder[A]
-  ): EntityDecoder[ScoreTask, A] = jsonOf[ScoreTask, A]
-
-  implicit def circeJsonEncoder[A](
-    implicit decoder: Encoder[A]
-  ): EntityEncoder[ScoreTask, A] = jsonEncoderOf[ScoreTask, A]
+  implicit def circeJsonDecoder[A](implicit dec: Decoder[A]): EntityDecoder[ScoreTask, A] = jsonOf[ScoreTask, A]
+  implicit def circeJsonEncoder[A](implicit dec: Encoder[A]): EntityEncoder[ScoreTask, A] = jsonEncoderOf[ScoreTask, A]
 
   val dsl: Http4sDsl[ScoreTask] = Http4sDsl[ScoreTask]
-
   import dsl._
 
   def route: HttpRoutes[ScoreTask] = {
-
     HttpRoutes.of[ScoreTask] {
-      case GET -> Root / "health"   => Ok()
+      case GET -> Root / "health"  => Ok()
       case GET -> Root / IntVar(_) => Ok()
       case request @ POST -> Root =>
         request.decode[ScoreData] { json =>
           for {
             c        <- BlazeHttpClient.client
             result   <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = json.score.show.toDouble))
+            _        <- putStrLn(line = s"Responding client..."): ZIO[Any, Nothing, Unit]
             response <- Ok(result)
           } yield response
         }
