@@ -3,10 +3,10 @@ package com.rightfit.api
 import cats.Show
 import cats.effect.Resource
 import cats.implicits._
-import com.rightfit.api.SkolverketService.Api.GymnasiumUnit.SchoolUnit
-import com.rightfit.api.SkolverketService.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
-import com.rightfit.api.SkolverketService.Api.{GymnasiumDetailedUnit, PotentialSchools}
-import com.rightfit.api.SkolverketService.{BlazeHttpClient, Live}
+import com.rightfit.api.SkolverketClient.Api.GymnasiumUnit.SchoolUnit
+import com.rightfit.api.SkolverketClient.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
+import com.rightfit.api.SkolverketClient.Api.{GymnasiumDetailedUnit, PotentialSchools}
+import com.rightfit.api.SkolverketClient.{BlazeHttpClient, Live}
 import io.circe.generic.extras.semiauto._
 import io.circe.generic.semiauto
 import io.circe.{Decoder, Encoder}
@@ -19,17 +19,17 @@ import zio.interop.catz._
 
 import scala.util.Try
 
-trait SkolverketService[R] {
-  def service: SkolverketService.Service[R]
+trait SkolverketClient[R] {
+  def service: SkolverketClient.Service[R]
 }
 
-object SkolverketService {
+object SkolverketClient {
 
   trait Service[R] {
     def getSchools(blazeClient: Client[Task], averageGrade: Double): Task[PotentialSchools]
   }
 
-  final class Live[R] extends SkolverketService[R] {
+  final class Live[R] extends SkolverketClient[R] {
     override def service: Service[R] =
       (blazeClient: Client[Task], avg: Double) => {
 

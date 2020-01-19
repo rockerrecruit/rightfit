@@ -2,13 +2,14 @@ package com.rightfit.api
 
 import cats.Show
 import cats.implicits.toShow
-import com.rightfit.api.SkolverketService.{BlazeHttpClient, Live}
+import com.rightfit.api.SkolverketClient.{BlazeHttpClient, Live}
 import io.circe.generic.extras.semiauto.{deriveUnwrappedDecoder, deriveUnwrappedEncoder}
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.{Decoder, Encoder}
 import org.http4s.circe._
 import org.http4s.dsl.Http4sDsl
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes}
+import org.slf4j.LoggerFactory
 import zio._
 import zio.interop.catz._
 
@@ -35,7 +36,7 @@ object PreferenceChoice {
   implicit val d: Decoder[PreferenceChoice] = deriveUnwrappedDecoder
 }
 
-final case class Api[R](rootUri: String) {
+final case class Server[R](rootUri: String) {
 
   type ScoreTask[A] = RIO[R, A]
 
@@ -46,6 +47,8 @@ final case class Api[R](rootUri: String) {
   import dsl._
 
   def route: HttpRoutes[ScoreTask] = {
+    val log = LoggerFactory.getLogger(getClass)
+
     HttpRoutes.of[ScoreTask] {
       case GET -> Root / "health"  => Ok()
       case GET -> Root / IntVar(_) => Ok()
@@ -53,8 +56,9 @@ final case class Api[R](rootUri: String) {
         request.decode[ScoreData] { json =>
           for {
             c        <- BlazeHttpClient.client
+            _        <- ZIO.effect(log.debug(s"Got request [$json]"))
             result   <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = json.score.show.toDouble))
-            _        <- putStrLn(line = s"Responding client..."): ZIO[Any, Nothing, Unit]
+            _        <- ZIO.effect(log.debug(s"Responding client..."))
             response <- Ok(result)
           } yield response
         }

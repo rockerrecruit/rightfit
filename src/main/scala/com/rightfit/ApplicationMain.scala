@@ -1,6 +1,6 @@
 package com.rightfit
 import cats.effect.ExitCode
-import com.rightfit.api.{Api, Configuration}
+import com.rightfit.api.{Server, Configuration}
 import org.http4s.implicits._
 import org.http4s.server.Router
 import org.http4s.server.blaze.BlazeServerBuilder
@@ -20,7 +20,7 @@ object ApplicationMain extends App {
   override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
     val program: ZIO[ZEnv, Throwable, Unit] = for {
       conf    <- api.loadConfig.provide(Configuration.Live)
-      httpApp  = Router[AppTask](mappings = "/score" -> Api(s"${conf.api.endpoint}/score").route).orNotFound
+      httpApp  = Router[AppTask](mappings = "/score" -> Server(s"${conf.api.endpoint}/score").route).orNotFound
       server   = ZIO.runtime[AppEnvironment].flatMap { implicit rts =>
                    BlazeServerBuilder[AppTask]
                      .bindHttp(conf.api.port, host = "0.0.0.0")
