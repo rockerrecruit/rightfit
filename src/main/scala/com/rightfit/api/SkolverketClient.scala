@@ -1,19 +1,17 @@
 package com.rightfit.api
 
 import cats.Show
-import cats.effect.Resource
 import cats.implicits._
 import com.rightfit.api.SkolverketClient.Api.GymnasiumUnit.SchoolUnit
 import com.rightfit.api.SkolverketClient.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
 import com.rightfit.api.SkolverketClient.Api.{GymnasiumDetailedUnit, PotentialSchools}
-import com.rightfit.api.SkolverketClient.{BlazeHttpClient, Live}
+import com.rightfit.api.SkolverketClient.Live
 import io.circe.generic.extras.semiauto._
 import io.circe.generic.semiauto
 import io.circe.{Decoder, Encoder}
 import org.http4s._
 import org.http4s.circe.{jsonEncoderOf, jsonOf}
 import org.http4s.client._
-import org.http4s.client.blaze.BlazeClientBuilder
 import zio._
 import zio.interop.catz._
 
@@ -33,10 +31,10 @@ object SkolverketClient {
     override def service: Service[R] =
       (blazeClient: Client[Task], avg: Double) => {
 
-        val e2 = (unit: String) =>
+        val uri = (unit: String) =>
           Uri.unsafeFromString(s"https://api.skolverket.se/planned-educations/school-units/$unit/statistics/gy")
 
-        val req2 = (uri: Uri) =>
+        val req = (uri: Uri) =>
           Request[Task](
             Method.GET,
             uri,
@@ -44,7 +42,7 @@ object SkolverketClient {
         )
 
         def getSchoolsByPage(page: Int): Task[List[Api.SchoolUnitSummary]] = {
-          val maxPage = if (page > 14) 14 else page
+          val maxPage  = if (page > 14) 14 else page
           val requests = List.range(0, maxPage).map { p =>
             val e1 = Uri.unsafeFromString(
               s"https://api.skolverket.se/planned-educations/school-units?page=$p&size=100&typeOfSchooling=gy"
@@ -63,26 +61,15 @@ object SkolverketClient {
           schoolSummaries  <- getSchoolsByPage(page = 1)
           gymnasiumUnits   <- ZIO.foreach(schoolSummaries) { summary =>
                                 for {
-                                  schoolsWithAvg <- ZIO.foreachParN(15)(summary.body._embedded.listedSchoolUnits) { u =>
-                                                      blazeClient.expect[GymnasiumDetailedUnit](req2(e2(u.code)))
+                                  schools        <- ZIO.foreachParN(15)(summary.body._embedded.listedSchoolUnits) { u =>
+                                                      blazeClient.expect[GymnasiumDetailedUnit](req(uri(u.code)))
                                                         .map(v => List(v.toGymnasiumUnit(u)))
                                                         .fold(_ => Nil, identity)
-                                                     }
-                                  relevantSchools = schoolsWithAvg.flatten.collect {
-                                                      case gymnasiumUnit if gymnasiumUnit.isWithin10Avg(avg) =>
-                                                        gymnasiumUnit
-                                                     }
+                                                     }.map(_.flatten)
+                                  relevantSchools = schools.filter(_.isWithin10Avg(avg))
                                 } yield relevantSchools
                               }.map(_.flatten)
         } yield PotentialSchools(gymnasiumUnits)
-      }
-  }
-
-  object BlazeHttpClient {
-
-    def client: ZIO[Any, Nothing, Resource[Task, Client[Task]]] =
-      ZIO.runtime.map { implicit runtime: Runtime[Any] =>
-        BlazeClientBuilder[Task](runtime.platform.executor.asEC).resource
       }
   }
 
@@ -98,9 +85,7 @@ object SkolverketClient {
         potentialSchools.schools match {
           case _ :: _ =>
             potentialSchools.schools
-              .map { school =>
-                s"School: ${school.schoolUnit.name.value} has average admission: ${school.admissionAvg}\n"
-              }
+              .map(school => s"School: ${school.schoolUnit.name.value} has average admission: ${school.admissionAvg}\n")
               .prepended("\n")
               .combineAll
           case Nil =>
@@ -174,10 +159,10 @@ object SkolverketClient {
         }
 
         val avgList = (for {
-          metric <- body.programMetrics.toList
-          avg    <- metric.admissionPointsAverage.toList
-          value  = avg.value.flatMap(parseCommaString)
-        } yield value).flatten
+          metric      <- body.programMetrics.toList
+          avg         <- metric.admissionPointsAverage.toList
+          maybeDouble  = avg.value.flatMap(parseCommaString)
+        } yield maybeDouble).flatten
 
         val avgGrade = avgList.sum / avgList.size
 

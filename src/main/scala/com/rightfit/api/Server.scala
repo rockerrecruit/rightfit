@@ -2,7 +2,7 @@ package com.rightfit.api
 
 import cats.Show
 import cats.implicits.toShow
-import com.rightfit.api.SkolverketClient.{BlazeHttpClient, Live}
+import com.rightfit.api.SkolverketClient.Live
 import io.circe.generic.extras.semiauto.{deriveUnwrappedDecoder, deriveUnwrappedEncoder}
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.{Decoder, Encoder}
