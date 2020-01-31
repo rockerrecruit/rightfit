@@ -40,4 +40,4 @@ libraryDependencies ++= Seq(
   "org.http4s" %% "http4s-blaze-client" % Http4sVersion
 )
 
-addCommandAlias("runSkolverketApi", "runMain com.rightfit.api.TestBlazeHttpClient")
+addCommandAlias("runSkolverketApi", "runMain com.rightfit.api.skolverket.TestBlazeHttpClient")
