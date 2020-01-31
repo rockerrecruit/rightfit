@@ -1,8 +1,10 @@
 package com.rightfit.api
 
 import cats.Show
-import cats.implicits.toShow
-import com.rightfit.api.SkolverketClient.Live
+import cats.syntax.show._
+import com.rightfit.api.skolverket.Api.GymnasiumDetailedUnit
+import com.rightfit.api.skolverket.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
+import com.rightfit.api.skolverket.SkolverketClient
 import io.circe.generic.extras.semiauto.{deriveUnwrappedDecoder, deriveUnwrappedEncoder}
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.{Decoder, Encoder}
@@ -49,7 +51,7 @@ final case class Server[R](rootUri: String) {
   val dsl: Http4sDsl[ScoreTask] = Http4sDsl[ScoreTask]
   import dsl._
 
-  def route: HttpRoutes[ScoreTask] = {
+  def route(schools: List[(SchoolUnitRep, GymnasiumDetailedUnit)]): HttpRoutes[ScoreTask] = {
     val log = LoggerFactory.getLogger(getClass)
 
     HttpRoutes.of[ScoreTask] {
@@ -58,9 +60,9 @@ final case class Server[R](rootUri: String) {
       case request @ POST -> Root =>
         request.decode[ScoreData] { json =>
           for {
-            c        <- BlazeHttpClient.client
             _        <- ZIO.effect(log.debug(s"Got request [$json]"))
-            result   <- c.use(v => new Live[Any].service.getSchools(v, averageGrade = json.score.show.toDouble))
+            avgGrade  = json.score.show.toDouble
+            result    = SkolverketClient.getSchoolByGrade(schools, avgGrade)
             _        <- ZIO.effect(log.debug(s"Responding client with: ${result.show}"))
             response <- Ok(result)
           } yield response

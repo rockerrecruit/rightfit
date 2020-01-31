@@ -1,12 +1,13 @@
 package com.rightfit
 import cats.effect.ExitCode
-import com.rightfit.api.{Configuration, Server}
+import com.rightfit
+import com.rightfit.api.{BlazeHttpClient, Configuration, Server}
+import com.rightfit.api.skolverket.SkolverketClient._
 import org.http4s.implicits._
 import org.http4s.server.Router
 import org.http4s.server.blaze.BlazeServerBuilder
 import org.http4s.server.middleware.CORS
 import org.slf4j.LoggerFactory
-
 import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
@@ -22,8 +23,13 @@ object ApplicationMain extends App {
     val log = LoggerFactory.getLogger(this.getClass)
     val program: ZIO[ZEnv, Throwable, Unit] = for {
       conf    <- api.loadConfig.provide(Configuration.Live)
-      httpApp  = Router[AppTask](mappings = "/score" -> Server(s"${conf.api.endpoint}/score").route).orNotFound
-      _       <- ZIO.effect(log.debug("Starting Server..."))
+      _       <- ZIO.effect(log.debug(s"Starting Server. Retrieving schools from Skolverket..."))
+      client  <- BlazeHttpClient.client
+      schools <- client.use { c =>
+                  new Live[Any].service(c).retrieveAllSchoolsWithStats
+                 }
+      _       <- ZIO.effect(log.debug(s"Retrieved ${schools.size} schools."))
+      httpApp  = Router[AppTask](mappings = "/score" -> Server(s"${conf.api.endpoint}/score").route(schools)).orNotFound
       _       <- ZIO.runtime[AppEnvironment].flatMap { implicit rts =>
                    BlazeServerBuilder[AppTask]
                      .bindHttp(conf.api.port, host = "0.0.0.0")
