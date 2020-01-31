@@ -4,11 +4,9 @@ version := "0.1"
 
 scalaVersion := "2.13.1"
 
-val ZioVersion = "1.0.0-RC17"
-
+val ZioVersion             = "1.0.0-RC17"
 val Http4sVersion          = "0.21.0-M6"
 val DoobieVersion          = "0.8.8"
-val ZIOVersion             = "1.0.0-RC17"
 val PureConfigVersion      = "0.12.2"
 val H2Version              = "1.4.199"
 val CirceVersion           = "0.12.2"

@@ -58,10 +58,10 @@ final case class Server[R](rootUri: String) {
       case GET -> Root / "health"  => Ok()
       case GET -> Root / IntVar(_) => Ok()
       case request @ POST -> Root =>
-        request.decode[ScoreData] { json =>
+        request.decode[ScoreData] { scoreData =>
           for {
-            _        <- ZIO.effect(log.debug(s"Got request [$json]"))
-            avgGrade  = json.score.show.toDouble
+            _        <- ZIO.effect(log.debug(s"Got request [$scoreData]"))
+            avgGrade  = scoreData.score.show.toDouble
             result    = SkolverketClient.getSchoolByGrade(schools, avgGrade)
             _        <- ZIO.effect(log.debug(s"Responding client with: ${result.show}"))
             response <- Ok(result)
