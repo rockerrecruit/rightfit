@@ -268,11 +268,11 @@ object Api {
         implicit val d: Decoder[Embedded] = semiauto.deriveDecoder
 
         case class SchoolUnitRep(
-                                  code: String,
-                                  geographicalAreaCode: String,
-                                  _links: SchoolUnitRep.Link,
-                                  name: String,
-                                )
+          code: String,
+          geographicalAreaCode: String,
+          _links: SchoolUnitRep.Link,
+          name: String,
+        )
 
         object SchoolUnitRep {
 
@@ -301,10 +301,10 @@ object Api {
           }
 
           case class TypeOfSchooling(
-                                      code: String,
-                                      displayName: String,
-                                      schoolYears: List[String]
-                                    )
+            code: String,
+            displayName: String,
+            schoolYears: List[String]
+          )
 
           object TypeOfSchooling {
             implicit val e: Encoder[TypeOfSchooling] = semiauto.deriveEncoder
