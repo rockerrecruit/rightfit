@@ -1,8 +1,7 @@
 package com.rightfit
 import cats.effect.ExitCode
-import com.rightfit
-import com.rightfit.api.{BlazeHttpClient, Configuration, Server}
 import com.rightfit.api.skolverket.SkolverketClient._
+import com.rightfit.api.{BlazeHttpClient, Configuration, Server}
 import org.http4s.implicits._
 import org.http4s.server.Router
 import org.http4s.server.blaze.BlazeServerBuilder
