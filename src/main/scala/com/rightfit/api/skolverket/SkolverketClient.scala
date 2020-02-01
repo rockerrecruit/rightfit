@@ -74,8 +74,8 @@ object SkolverketClient {
       override def retrieveAllSchoolsWithStats: Task[List[(SchoolUnitRep, GymnasiumDetailedUnit)]] = {
         for {
           schoolSummaries <- getSchoolsByPage(upToPage = 1)
-          gymnasiumUnits  <- ZIO.foreachParN(15)(schoolSummaries) { summary =>
-                               ZIO.foreachParN(15)(summary.body._embedded.listedSchoolUnits) { u =>
+          gymnasiumUnits  <- ZIO.foreachPar(schoolSummaries) { summary =>
+                               ZIO.foreachParN(5)(summary.body._embedded.listedSchoolUnits) { u =>
                                  blazeClient
                                    .expect[GymnasiumDetailedUnit](requestFromUri(uriFromUnit(u.code)))
                                    .fold(_ => Map.empty, unit => Map(u -> unit))
