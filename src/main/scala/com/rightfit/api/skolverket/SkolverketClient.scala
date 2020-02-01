@@ -52,12 +52,12 @@ object SkolverketClient {
               summary <-  client.expect[Api.SchoolUnitSummary](req)
               _       <-  ZIO.effect(println(s"Successfully retrieved summary..."))
               result  <-  summary.body._links.next match {
-                case Some(nextLink) =>
-                  ZIO.effect(println(s"Got nextlink: $nextLink")) *>
-                  recurse(Some(nextLink)).map(s => s.appended(summary))
-                case None =>
-                  Task(List[Api.SchoolUnitSummary]())
-              }
+                            case Some(nextLink) =>
+                              ZIO.effect(println(s"Found next link: $nextLink")) *>
+                              recurse(Some(nextLink)).map(s => s.appended(summary))
+                            case None =>
+                              Task(List[Api.SchoolUnitSummary]())
+                          }
             } yield result
           case None =>
             Task(List[Api.SchoolUnitSummary]())
@@ -78,8 +78,7 @@ object SkolverketClient {
                                ZIO.foreachParN(15)(summary.body._embedded.listedSchoolUnits) { u =>
                                  blazeClient
                                    .expect[GymnasiumDetailedUnit](requestFromUri(uriFromUnit(u.code)))
-                                   .fold(_ => Map.empty[SchoolUnitRep, GymnasiumDetailedUnit],
-                                     unit => Map[SchoolUnitRep, GymnasiumDetailedUnit](u -> unit))
+                                   .fold(_ => Map.empty, unit => Map(u -> unit))
                                }.map(_.flatten)
                              }.map(_.flatten)
         } yield gymnasiumUnits
@@ -96,8 +95,7 @@ object SkolverketClient {
                                ZIO.foreachParN(5)(summary.body._embedded.listedSchoolUnits) { u =>
                                  blazeClient
                                    .expect[GymnasiumDetailedUnit](requestFromUri(uriFromUnit(u.code)))
-                                   .fold(_ => Map.empty[SchoolUnitRep, GymnasiumDetailedUnit],
-                                     unit => Map[SchoolUnitRep, GymnasiumDetailedUnit](u -> unit))
+                                   .fold(_ => Map.empty, unit => Map(u -> unit))
                                }.map(_.flatten)
                              }.map(_.flatten)
         } yield gymnasiumUnits
@@ -119,10 +117,13 @@ object TestBlazeHttpClient extends App {
 
   override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, Int] = {
     (for {
-      c       <- BlazeHttpClient.client
-      s        = new Test[Any].service _
+      _       <- zio.console.putStrLn(line = s"Running Test Client...")
+      cr      <- BlazeHttpClient.client
+      avgGrade = 240.0
+      service  = new Test[Any].service _
       _       <- for {
-                   schools <- c.use(v => s(v).retrieveAllSchoolsWithStats.map(getSchoolByGrade(_, avgGrade = 240.0)))
+                   _       <- zio.console.putStrLn(line = s"Retrieving schools with grade average around $avgGrade.")
+                   schools <- cr.use(c => service(c).retrieveAllSchoolsWithStats.map(getSchoolByGrade(_, avgGrade)))
                    _       <- zio.console.putStrLn(schools.show)
                  } yield ()
     } yield 0).catchAllCause(cause => zio.console.putStrLn(cause.prettyPrint).as(1))
