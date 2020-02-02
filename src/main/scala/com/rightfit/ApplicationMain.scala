@@ -1,6 +1,6 @@
 package com.rightfit
 import cats.effect.ExitCode
-import com.rightfit.api.skolverket.SkolverketClient._
+import com.rightfit.api.skolverket.SkolverketClient
 import com.rightfit.api.{BlazeHttpClient, Configuration, Server}
 import org.http4s.implicits._
 import org.http4s.server.Router
@@ -23,10 +23,8 @@ object ApplicationMain extends App {
     val program: ZIO[ZEnv, Throwable, Unit] = for {
       conf    <- api.loadConfig.provide(Configuration.Live)
       _       <- ZIO.effect(log.debug(s"Starting Server. Retrieving schools from Skolverket..."))
-      client  <- BlazeHttpClient.client
-      schools <- client.use { c =>
-                  new Live[Any].service(c).retrieveAllSchoolsWithStats
-                 }
+      client   = new BlazeHttpClient.Live with SkolverketClient.Live {}
+      schools <- client.skolverketClient.retrieveAllSchoolsWithStats
       _       <- ZIO.effect(log.debug(s"Retrieved ${schools.size} schools."))
       httpApp  = Router[AppTask](mappings = "/score" -> Server(s"${conf.api.endpoint}/score").route(schools)).orNotFound
       _       <- ZIO.runtime[AppEnvironment].flatMap { implicit rts =>
