@@ -18,6 +18,8 @@ object ApplicationMain extends App {
   type AppEnvironment = Clock with Blocking with zio.console.Console
   type AppTask[A]     = RIO[AppEnvironment, A]
 
+  type MyService      = BlazeHttpClient with SkolverketClient
+
   override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
     val log = LoggerFactory.getLogger(this.getClass)
     val program: ZIO[ZEnv, Throwable, Unit] = for {

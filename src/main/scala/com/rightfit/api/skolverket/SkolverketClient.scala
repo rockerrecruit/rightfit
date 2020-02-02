@@ -9,38 +9,47 @@ import zio._
 import zio.interop.catz._
 import SkolverketClient.Helpers._
 import cats.syntax.show._
+import zio.console.Console
 
 trait SkolverketClient {
-  def skolverketClient: SkolverketClient.Service[Any]
+  def skolverketClient: SkolverketClient.Service[BlazeHttpClient]
 }
 
 object SkolverketClient {
 
+  type SchoolDetails = List[(SchoolUnitRep, GymnasiumDetailedUnit)]]
+
   trait Service[R] {
-    def retrieveAllSchoolsWithStats: Task[List[(SchoolUnitRep, GymnasiumDetailedUnit)]]
+    def retrieveAllSchoolsWithStats:ZIO[BlazeHttpClient, Throwable, List[(SchoolUnitRep, GymnasiumDetailedUnit)]]
   }
 
-  trait Live extends BlazeHttpClient with SkolverketClient {
-    override def skolverketClient: Service[Any] = new Service[Any] {
-      override def retrieveAllSchoolsWithStats: Task[List[(SchoolUnitRep, GymnasiumDetailedUnit)]] = {
+  trait Live extends SkolverketClient {
+    override def skolverketClient: Service[BlazeHttpClient] = new Service[BlazeHttpClient] {
+      override def retrieveAllSchoolsWithStats: ZIO[BlazeHttpClient, Throwable, SchoolDetails] = {
         for {
-          cr      <- blazeClient.httpClient
-          schools <- cr.use(c => getSchoolsWithStats(c, upToPage = 14))
+          blazeEnv <- ZIO.environment[BlazeHttpClient]
+          cr       <- blazeEnv.blazeHttpClient.resource
+          schools  <- cr.use(c => getSchoolsWithStats(c, upToPage = 14))
         } yield schools
       }
     }
   }
 
-  trait Test extends BlazeHttpClient with SkolverketClient {
-    override def skolverketClient: Service[Any] = new Service[Any] {
-      override def retrieveAllSchoolsWithStats: Task[List[(SchoolUnitRep, GymnasiumDetailedUnit)]] = {
+  object Live extends Live
+
+  trait Test extends SkolverketClient {
+    override def skolverketClient: Service[BlazeHttpClient] = new Service[BlazeHttpClient] {
+      override def retrieveAllSchoolsWithStats: ZIO[BlazeHttpClient, Throwable, SchoolDetails] = {
         for {
-          cr      <- blazeClient.httpClient
-          schools <- cr.use(c => getSchoolsWithStats(c, upToPage = 1))
+          blazeEnv <- ZIO.environment[BlazeHttpClient]
+          cr       <- blazeEnv.blazeHttpClient.resource
+          schools  <- cr.use(c => getSchoolsWithStats(c, upToPage = 1))
         } yield schools
       }
     }
   }
+
+  object Test extends Test
 
   object Helpers {
 
@@ -54,7 +63,7 @@ object SkolverketClient {
         headers = Headers.of(Header("Accept", s"application/vnd.skolverket.plannededucations.api.v2.hal+json"))
       )
 
-    def getSchoolsByPage(client: Client[Task], upToPage: Int): Task[List[Api.SchoolUnitSummary]] = {
+    def getSchoolsByPage(client: Client[Task], upToPage: Int): Task[List[SchoolUnitSummary]] = {
       val maxPage = if (upToPage > 14) 14 else upToPage
       val requests = List.range(0, maxPage).map { p =>
         val strUrl  = s"https://api.skolverket.se/planned-educations/school-units?page=$p&size=100&typeOfSchooling=gy"
@@ -62,10 +71,10 @@ object SkolverketClient {
         val headers = Headers.of(Header("Accept", s"application/vnd.skolverket.plannededucations.api.v2.hal+json"))
         Request[Task](Method.GET, uri, headers = headers)
       }
-      ZIO.foreachParN(15)(requests)(req => client.expect[Api.SchoolUnitSummary](req))
+      ZIO.foreachParN(15)(requests)(req => client.expect[SchoolUnitSummary](req))
     }
 
-    def getSchoolsWithStats(client: Client[Task], upToPage: Int): Task[List[(SchoolUnitRep, GymnasiumDetailedUnit)]] = {
+    def getSchoolsWithStats(client: Client[Task], upToPage: Int): Task[SchoolDetails] = {
       for {
         schoolSummaries <- getSchoolsByPage(client, upToPage)
         gymnasiumUnits  <- ZIO.foreachParN(5)(schoolSummaries) { summary =>
@@ -91,7 +100,7 @@ object SkolverketClient {
             val header = Headers.of(Header("Accept", s"application/vnd.skolverket.plannededucations.api.v2.hal+json"))
             val req    = Request[Task](Method.GET, uri, headers = header)
             for {
-              summary <- client.expect[Api.SchoolUnitSummary](req)
+              summary <- client.expect[SchoolUnitSummary](req)
               result  <- summary.body._links.next
                           .fold(Task(List.empty[SchoolUnitSummary]))(nl => recurse(Some(nl)).map(_.appended(summary)))
             } yield result
@@ -107,8 +116,8 @@ object SkolverketClient {
 
   }
 
-  def getSchoolByGrade(schools: List[(SchoolUnitRep, GymnasiumDetailedUnit)], avgGrade: Double): PotentialSchools = {
-    val filteredSchools = schools
+  def getSchoolByGrade(schoolDetails: SchoolDetails, avgGrade: Double): PotentialSchools = {
+    val filteredSchools = schoolDetails
       .map { case (rep, school) => school.toGymnasiumUnit(rep) }
       .filter(_.isWithin10Avg(avgGrade))
     PotentialSchools(filteredSchools)
@@ -119,15 +128,29 @@ object SkolverketClient {
 object TestBlazeHttpClient extends App {
   import SkolverketClient._
 
-  override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, Int] = {
+  override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
     (for {
       _              <- zio.console.putStrLn(line = s"Running Test Client...")
       avgGrade        = 240.0
-      service         = new BlazeHttpClient.Live with SkolverketClient.Test {}
+      service         = SkolverketClient.Test
       schoolDetails  <-  service.skolverketClient.retrieveAllSchoolsWithStats
       schools         = getSchoolByGrade(schoolDetails, avgGrade)
       _              <-  zio.console.putStrLn(schools.show)
     } yield 0).catchAllCause(cause => zio.console.putStrLn(cause.prettyPrint).as(1))
+
+    def runMyThing: ZIO[Console with BlazeHttpClient, Nothing, Int] =
+      (for {
+        _              <- zio.console.putStrLn(line = s"Running Test Client...")
+        avgGrade        = 240.0
+        service         = SkolverketClient.Test
+        schoolDetails  <-  service.skolverketClient.retrieveAllSchoolsWithStats
+        schools         = getSchoolByGrade(schoolDetails, avgGrade)
+        _              <-  zio.console.putStrLn(schools.show)
+    } yield 0).catchAllCause(cause => zio.console.putStrLn(cause.prettyPrint).as(1))
+
+    ZIO.accessM(r => r.)
+    val myThing = runMyThing.provide()
+
   }
 
 }
