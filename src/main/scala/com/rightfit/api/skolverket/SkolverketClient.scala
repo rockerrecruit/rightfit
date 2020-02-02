@@ -1,8 +1,8 @@
 package com.rightfit.api.skolverket
 
 import com.rightfit.api.BlazeHttpClient
+import com.rightfit.api.skolverket.Api._
 import com.rightfit.api.skolverket.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
-import com.rightfit.api.skolverket.Api.{GymnasiumDetailedUnit, PotentialSchools, SchoolUnitSummary}
 import org.http4s._
 import org.http4s.client._
 import zio._
@@ -24,7 +24,7 @@ object SkolverketClient {
     override def skolverketClient: Service[Any] = new Service[Any] {
       override def retrieveAllSchoolsWithStats: Task[List[(SchoolUnitRep, GymnasiumDetailedUnit)]] = {
         for {
-          cr      <- httpClient
+          cr      <- blazeClient.httpClient
           schools <- cr.use(c => getSchoolsWithStats(c, upToPage = 14))
         } yield schools
       }
@@ -35,7 +35,7 @@ object SkolverketClient {
     override def skolverketClient: Service[Any] = new Service[Any] {
       override def retrieveAllSchoolsWithStats: Task[List[(SchoolUnitRep, GymnasiumDetailedUnit)]] = {
         for {
-          cr      <- httpClient
+          cr      <- blazeClient.httpClient
           schools <- cr.use(c => getSchoolsWithStats(c, upToPage = 1))
         } yield schools
       }
@@ -82,8 +82,9 @@ object SkolverketClient {
     def getSchoolsByLink(
       client: Client[Task],
       maybeLink: Option[SchoolUnitSummary.Body.Links.Next]
-    ): Task[List[Api.SchoolUnitSummary]] = {
-      def recurse(maybeLink: Option[SchoolUnitSummary.Body.Links.Next]): Task[List[Api.SchoolUnitSummary]] = {
+    ): Task[List[SchoolUnitSummary]] = {
+
+      def recurse(maybeLink: Option[SchoolUnitSummary.Body.Links.Next]): Task[List[SchoolUnitSummary]] = {
         maybeLink match {
           case Some(link) =>
             val uri    = Uri.unsafeFromString(link.href)
@@ -91,19 +92,14 @@ object SkolverketClient {
             val req    = Request[Task](Method.GET, uri, headers = header)
             for {
               summary <- client.expect[Api.SchoolUnitSummary](req)
-              _       <- ZIO.effect(println(s"Successfully retrieved summary..."))
-              result  <- summary.body._links.next match {
-                           case Some(nextLink) =>
-                             ZIO.effect(println(s"Found next link: $nextLink")) *>
-                             recurse(Some(nextLink)).map(s => s.appended(summary))
-                           case None =>
-                             Task(List[Api.SchoolUnitSummary]())
-                         }
+              result  <- summary.body._links.next
+                          .fold(Task(List.empty[SchoolUnitSummary]))(nl => recurse(Some(nl)).map(_.appended(summary)))
             } yield result
           case None =>
-            Task(List[Api.SchoolUnitSummary]())
+            Task(List.empty)
         }
       }
+
       val startUrl  = "https://api.skolverket.se/planned-educations/school-units?size=100&typeOfSchooling=gy"
       val startLink = SchoolUnitSummary.Body.Links.Next(startUrl)
       recurse(Some(startLink))

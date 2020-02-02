@@ -23,7 +23,7 @@ object ApplicationMain extends App {
     val program: ZIO[ZEnv, Throwable, Unit] = for {
       conf    <- api.loadConfig.provide(Configuration.Live)
       _       <- ZIO.effect(log.debug(s"Starting Server. Retrieving schools from Skolverket..."))
-      client  = new BlazeHttpClient.Live with SkolverketClient.Live {}
+      client   = new BlazeHttpClient.Live with SkolverketClient.Live {}
       schools <- client.skolverketClient.retrieveAllSchoolsWithStats
       _       <- ZIO.effect(log.debug(s"Retrieved ${schools.size} schools."))
       httpApp  = Router[AppTask](mappings = "/score" -> Server(s"${conf.api.endpoint}/score").route(schools)).orNotFound
