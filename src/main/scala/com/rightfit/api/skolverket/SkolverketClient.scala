@@ -9,6 +9,7 @@ import zio._
 import zio.interop.catz._
 import SkolverketClient.Helpers._
 import cats.syntax.show._
+import org.slf4j.{Logger, LoggerFactory}
 import zio.console.Console
 
 trait SkolverketClient {
@@ -125,14 +126,16 @@ object SkolverketClient {
 
 }
 
-object TestBlazeHttpClient extends App {
+object TestSkolverketClient extends App {
   import SkolverketClient._
 
-  def runMyThing: ZIO[Console with BlazeHttpClient, Throwable, Unit] = {
+  val log: Logger = LoggerFactory.getLogger(this.getClass)
+
+  def testClient: ZIO[Console with BlazeHttpClient, Throwable, Unit] = {
+    val avgGrade = 240.0
+    val service  = SkolverketClient.Test
     for {
-      _             <- zio.console.putStrLn(line = s"Running Test Client...")
-      avgGrade       = 240.0
-      service        = SkolverketClient.Test
+      _             <- ZIO.effect(log.debug( s"Retrieving a few schools with avg grade around: $avgGrade"))
       schoolDetails <- service.skolverketClient.retrieveAllSchoolsWithStats
       schools        = getSchoolByGrade(schoolDetails, avgGrade)
       _             <- zio.console.putStrLn(schools.show)
@@ -140,7 +143,7 @@ object TestBlazeHttpClient extends App {
   }
 
   override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, Int] = {
-    runMyThing.provide(new zio.console.Console.Live with BlazeHttpClient.Live)
+    testClient.provide(new zio.console.Console.Live with BlazeHttpClient.Live)
       .map(_ => 0)
       .catchAllCause(cause => zio.console.putStrLn(cause.prettyPrint).as(1))
   }
