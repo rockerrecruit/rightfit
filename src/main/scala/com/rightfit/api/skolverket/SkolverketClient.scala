@@ -17,10 +17,10 @@ trait SkolverketClient {
 
 object SkolverketClient {
 
-  type SchoolDetails = List[(SchoolUnitRep, GymnasiumDetailedUnit)]]
+  type SchoolDetails = List[(SchoolUnitRep, GymnasiumDetailedUnit)]
 
   trait Service[R] {
-    def retrieveAllSchoolsWithStats:ZIO[BlazeHttpClient, Throwable, List[(SchoolUnitRep, GymnasiumDetailedUnit)]]
+    def retrieveAllSchoolsWithStats: ZIO[BlazeHttpClient, Throwable, List[(SchoolUnitRep, GymnasiumDetailedUnit)]]
   }
 
   trait Live extends SkolverketClient {
@@ -128,29 +128,21 @@ object SkolverketClient {
 object TestBlazeHttpClient extends App {
   import SkolverketClient._
 
-  override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
-    (for {
-      _              <- zio.console.putStrLn(line = s"Running Test Client...")
-      avgGrade        = 240.0
-      service         = SkolverketClient.Test
-      schoolDetails  <-  service.skolverketClient.retrieveAllSchoolsWithStats
-      schools         = getSchoolByGrade(schoolDetails, avgGrade)
-      _              <-  zio.console.putStrLn(schools.show)
-    } yield 0).catchAllCause(cause => zio.console.putStrLn(cause.prettyPrint).as(1))
+  def runMyThing: ZIO[Console with BlazeHttpClient, Throwable, Unit] = {
+    for {
+      _             <- zio.console.putStrLn(line = s"Running Test Client...")
+      avgGrade       = 240.0
+      service        = SkolverketClient.Test
+      schoolDetails <- service.skolverketClient.retrieveAllSchoolsWithStats
+      schools        = getSchoolByGrade(schoolDetails, avgGrade)
+      _             <- zio.console.putStrLn(schools.show)
+    } yield ()
+  }
 
-    def runMyThing: ZIO[Console with BlazeHttpClient, Nothing, Int] =
-      (for {
-        _              <- zio.console.putStrLn(line = s"Running Test Client...")
-        avgGrade        = 240.0
-        service         = SkolverketClient.Test
-        schoolDetails  <-  service.skolverketClient.retrieveAllSchoolsWithStats
-        schools         = getSchoolByGrade(schoolDetails, avgGrade)
-        _              <-  zio.console.putStrLn(schools.show)
-    } yield 0).catchAllCause(cause => zio.console.putStrLn(cause.prettyPrint).as(1))
-
-    ZIO.accessM(r => r.)
-    val myThing = runMyThing.provide()
-
+  override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, Int] = {
+    runMyThing.provide(new zio.console.Console.Live with BlazeHttpClient.Live)
+      .map(_ => 0)
+      .catchAllCause(cause => zio.console.putStrLn(cause.prettyPrint).as(1))
   }
 
 }
