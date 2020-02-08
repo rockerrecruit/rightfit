@@ -9,7 +9,7 @@ import zio._
 import zio.interop.catz._
 import SkolverketClient.Helpers._
 import cats.syntax.show._
-import com.rightfit.model.{AverageGrade, County}
+import com.rightfit.model.{AverageGrade, County, ProgramType}
 import org.slf4j.{Logger, LoggerFactory}
 import zio.console.Console
 
@@ -118,10 +118,15 @@ object SkolverketClient {
 
   }
 
-  def getSchoolByGrade(schoolDetails: SchoolDetails, avgGrade: AverageGrade, county: County): PotentialSchools = {
+  def getSchoolByGrade(
+    schoolDetails: SchoolDetails,
+    avgGrade: AverageGrade,
+    county: County,
+    programType: ProgramType
+  ): PotentialSchools = {
     val filteredSchools = schoolDetails
       .map { case (rep, school) => school.toGymnasiumUnit(rep) }
-      .filter(unit => unit.isInCounty(county) && unit.isWithin10Avg(avgGrade))
+      .filter(unit => unit.isRelevant(avgGrade, county, programType))
     PotentialSchools(filteredSchools)
   }
 
@@ -138,8 +143,9 @@ object TestSkolverketClient extends App {
     for {
       _             <- ZIO.effect(log.debug( s"Retrieving a few schools with avg grade around ${avgGrade.show}"))
       schoolDetails <- service.skolverketClient.retrieveAllSchoolsWithStats
-      schools        = getSchoolByGrade(schoolDetails, avgGrade, County("01"))
+      schools        = getSchoolByGrade(schoolDetails, avgGrade, County("01"), ProgramType("NA"))
       _             <- ZIO.effect(log.debug(schools.show))
+      _             <- ZIO.effect(log.debug(s"$schools"))
     } yield ()
   }
 
