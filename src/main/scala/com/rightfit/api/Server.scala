@@ -5,6 +5,7 @@ import cats.syntax.show._
 import com.rightfit.api.skolverket.Api.GymnasiumDetailedUnit
 import com.rightfit.api.skolverket.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
 import com.rightfit.api.skolverket.SkolverketClient
+import com.rightfit.model.{AverageGrade, County}
 import io.circe.generic.extras.semiauto.{deriveUnwrappedDecoder, deriveUnwrappedEncoder}
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.{Decoder, Encoder}
@@ -15,8 +16,10 @@ import org.slf4j.LoggerFactory
 import zio._
 import zio.interop.catz._
 
+import scala.util.Try
+
 object Server {
-  case class ScoreData(score: Points, choice: PreferenceChoice)
+  case class ScoreData(score: Points, choice: PreferenceChoice, county: County)
 
   object ScoreData {
     implicit val e: Encoder[ScoreData] = deriveEncoder
@@ -38,6 +41,8 @@ object Server {
     implicit val e: Encoder[PreferenceChoice] = deriveUnwrappedEncoder
     implicit val d: Decoder[PreferenceChoice] = deriveUnwrappedDecoder
   }
+
+
 }
 
 final case class Server[R](rootUri: String) {
@@ -61,8 +66,8 @@ final case class Server[R](rootUri: String) {
         request.decode[ScoreData] { scoreData =>
           for {
             _        <- ZIO.effect(log.debug(s"Got request [$scoreData]"))
-            avgGrade  = scoreData.score.show.toDouble
-            result    = SkolverketClient.getSchoolByGrade(schools, avgGrade)
+            avgGrade <- ZIO.fromTry(Try(AverageGrade(scoreData.score.value.toDouble)))
+            result    = SkolverketClient.getSchoolByGrade(schools, avgGrade, scoreData.county)
             _        <- ZIO.effect(log.debug(s"Responding client with: ${result.show}"))
             response <- Ok(result)
           } yield response

@@ -9,6 +9,7 @@ import zio._
 import zio.interop.catz._
 import SkolverketClient.Helpers._
 import cats.syntax.show._
+import com.rightfit.model.{AverageGrade, County}
 import org.slf4j.{Logger, LoggerFactory}
 import zio.console.Console
 
@@ -117,10 +118,10 @@ object SkolverketClient {
 
   }
 
-  def getSchoolByGrade(schoolDetails: SchoolDetails, avgGrade: Double): PotentialSchools = {
+  def getSchoolByGrade(schoolDetails: SchoolDetails, avgGrade: AverageGrade, county: County): PotentialSchools = {
     val filteredSchools = schoolDetails
       .map { case (rep, school) => school.toGymnasiumUnit(rep) }
-      .filter(_.isWithin10Avg(avgGrade))
+      .filter(unit => unit.isInCounty(county) && unit.isWithin10Avg(avgGrade))
     PotentialSchools(filteredSchools)
   }
 
@@ -132,12 +133,12 @@ object TestSkolverketClient extends App {
   val log: Logger = LoggerFactory.getLogger(this.getClass)
 
   def testClient: ZIO[Console with BlazeHttpClient, Throwable, Unit] = {
-    val avgGrade = 240.0
+    val avgGrade = AverageGrade(240.0)
     val service  = SkolverketClient.Test
     for {
-      _             <- ZIO.effect(log.debug( s"Retrieving a few schools with avg grade around: $avgGrade"))
+      _             <- ZIO.effect(log.debug( s"Retrieving a few schools with avg grade around ${avgGrade.show}"))
       schoolDetails <- service.skolverketClient.retrieveAllSchoolsWithStats
-      schools        = getSchoolByGrade(schoolDetails, avgGrade)
+      schools        = getSchoolByGrade(schoolDetails, avgGrade, County("01"))
       _             <- ZIO.effect(log.debug(schools.show))
     } yield ()
   }

@@ -9,6 +9,7 @@ import zio.Task
 import cats.implicits._
 import com.rightfit.api.skolverket.Api.GymnasiumUnit.SchoolUnit
 import com.rightfit.api.skolverket.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
+import com.rightfit.model.{AverageGrade, County}
 import org.http4s.circe._
 import zio.interop.catz._
 
@@ -37,8 +38,12 @@ object Api {
 
   case class GymnasiumUnit(schoolUnit: SchoolUnit, admissionAvg: Double) {
 
-    def isWithin10Avg(averageTarget: Double): Boolean =
-      admissionAvg + 10.0 >= averageTarget && admissionAvg - 10.0 <= averageTarget
+    def isWithin10Avg(averageTarget: AverageGrade): Boolean =
+      admissionAvg + 10.0 >= averageTarget.value && admissionAvg - 10.0 <= averageTarget.value
+
+    def isInCounty(county: County): Boolean = {
+      schoolUnit.municipality.value.startsWith(county.value)
+    }
   }
 
   object GymnasiumUnit {
