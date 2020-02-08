@@ -7,9 +7,9 @@ import io.circe.{Decoder, Encoder}
 import org.http4s.{EntityDecoder, EntityEncoder}
 import zio.Task
 import cats.implicits._
-import com.rightfit.api.skolverket.Api.GymnasiumUnit.SchoolUnit
+import com.rightfit.api.skolverket.Api.GymnasiumUnit.{ProgramWithAverage, SchoolUnit}
 import com.rightfit.api.skolverket.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
-import com.rightfit.model.{AverageGrade, County}
+import com.rightfit.model.{AverageGrade, County, ProgramType}
 import org.http4s.circe._
 import zio.interop.catz._
 
@@ -27,7 +27,7 @@ object Api {
       potentialSchools.schools match {
         case _ :: _ =>
           potentialSchools.schools
-            .map(school => s"School: ${school.schoolUnit.name.value} has average admission: ${school.admissionAvg}\n")
+            .map(school => s"School: ${school.schoolUnit.name.value} has average admission: ${school.averageGrade}\n")
             .prepended("\n")
             .combineAll
         case Nil =>
@@ -36,14 +36,10 @@ object Api {
     }
   }
 
-  case class GymnasiumUnit(schoolUnit: SchoolUnit, admissionAvg: Double) {
 
-    def isWithin10Avg(averageTarget: AverageGrade): Boolean =
-      admissionAvg + 10.0 >= averageTarget.value && admissionAvg - 10.0 <= averageTarget.value
+  case class GymnasiumUnit(schoolUnit: SchoolUnit, averageGrade: AverageGrade) {
 
-    def isInCounty(county: County): Boolean = {
-      schoolUnit.municipality.value.startsWith(county.value)
-    }
+
   }
 
   object GymnasiumUnit {
@@ -51,12 +47,18 @@ object Api {
     implicit val e: Encoder[GymnasiumUnit] = semiauto.deriveEncoder
     implicit val d: Decoder[GymnasiumUnit] = semiauto.deriveDecoder
 
+    case class ProgramWithAverage(programType: ProgramType, averageGrade: AverageGrade)
+
+    object ProgramWithAverage {
+      implicit val e: Encoder[ProgramWithAverage] = semiauto.deriveEncoder
+      implicit val d: Decoder[ProgramWithAverage] = semiauto.deriveDecoder
+    }
+
     import SchoolUnit._
 
     case class SchoolUnit(code: Code, name: Name, municipality: Municipality, orgNo: OrgNo)
 
     object SchoolUnit {
-
       implicit val e: Encoder[SchoolUnit] = semiauto.deriveEncoder
       implicit val d: Decoder[SchoolUnit] = semiauto.deriveDecoder
 
@@ -94,7 +96,33 @@ object Api {
 
   case class GymnasiumDetailedUnit(status: String, message: String, body: GymnasiumDetailedUnit.Body) {
 
-    def toGymnasiumUnit(schoolUnit: SchoolUnitRep): GymnasiumUnit = {
+    def isRelevant(
+      schoolUnit: SchoolUnit,
+      desiredTarget: AverageGrade,
+      desiredCounty: County,
+      desiredType: ProgramType,
+      programWithAverages: List[ProgramWithAverage]
+    ): Option[AverageGrade] = {
+      programWithAverages.flatMap { progWithAverage =>
+        val correctProgramType = progWithAverage.programType == desiredType
+        val correctAvg         = isWithin10Avg(progWithAverage.averageGrade, desiredTarget)
+        val correctCounty      = isInCounty(schoolUnit, desiredCounty)
+        if (correctProgramType && correctAvg && correctCounty) Some(progWithAverage.averageGrade) else None
+      } match {
+        case head :: _ => Some(head)
+        case Nil       => None
+      }
+    }
+
+    private def isWithin10Avg(avgForUnit: AverageGrade, desiredTarget: AverageGrade): Boolean = {
+      avgForUnit.value + 10.0 >= desiredTarget.value && avgForUnit.value - 10.0 <= desiredTarget.value
+    }
+
+    private def isInCounty(schoolUnit: SchoolUnit, desiredCounty: County): Boolean = {
+      schoolUnit.municipality.value.startsWith(desiredCounty.value)
+    }
+
+    def toGymnasiumUnit(schoolUnit: SchoolUnitRep, desiredTarget: AverageGrade, desiredCounty: County, desiredType: ProgramType): Option[GymnasiumUnit] = {
 
       def parseCommaString(string: String): Option[Double] = {
         import java.text.NumberFormat
@@ -109,10 +137,9 @@ object Api {
       val avgList = (for {
         metric      <- body.programMetrics.toList
         avg         <- metric.admissionPointsAverage.toList
-        maybeDouble = avg.value.flatMap(parseCommaString)
-      } yield maybeDouble).flatten
-
-      val avgGrade = avgList.sum / avgList.size
+        averageGrade = avg.value.flatMap(parseCommaString).map(AverageGrade.apply)
+        programCode  = ProgramType(metric.programCode)
+      } yield averageGrade.map(avgGrade => ProgramWithAverage(programCode, avgGrade))).flatten
 
       val unit = SchoolUnit(
         SchoolUnit.Code(schoolUnit.code),
@@ -121,7 +148,9 @@ object Api {
         SchoolUnit.OrgNo(schoolUnit.code),
       )
 
-      GymnasiumUnit(unit, avgGrade)
+      isRelevant(unit, desiredTarget, desiredCounty, desiredType, avgList).map { avgGrade =>
+        GymnasiumUnit(unit, avgGrade)
+      }
     }
   }
 
