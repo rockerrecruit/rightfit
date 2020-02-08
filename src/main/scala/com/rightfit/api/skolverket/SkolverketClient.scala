@@ -138,7 +138,7 @@ object TestSkolverketClient extends App {
       _             <- ZIO.effect(log.debug( s"Retrieving a few schools with avg grade around: $avgGrade"))
       schoolDetails <- service.skolverketClient.retrieveAllSchoolsWithStats
       schools        = getSchoolByGrade(schoolDetails, avgGrade)
-      _             <- zio.console.putStrLn(schools.show)
+      _             <- ZIO.effect(log.debug(schools.show))
     } yield ()
   }
 
