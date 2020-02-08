@@ -60,7 +60,6 @@ final case class Server[R](rootUri: String) {
             avgGrade <- ZIO.fromTry(Try(AverageGrade(scoreData.score.value.toDouble)))
             result    = SkolverketClient.getSchoolByGrade(schools, avgGrade, scoreData.county, scoreData.programType)
             _        <- ZIO.effect(log.debug(s"Responding client with: ${result.show}"))
-            _        <- ZIO.effect(log.debug(s"${result.schools.take(10)}"))
             response <- Ok(result)
           } yield response
         }

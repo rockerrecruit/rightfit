@@ -118,6 +118,7 @@ object SkolverketClient {
 
   }
 
+
   def getSchoolByGrade(
     schoolDetails: SchoolDetails,
     avgGrade: AverageGrade,
@@ -125,8 +126,7 @@ object SkolverketClient {
     programType: ProgramType
   ): PotentialSchools = {
     val filteredSchools = schoolDetails
-      .map { case (rep, school) => school.toGymnasiumUnit(rep) }
-      .filter(unit => unit.isRelevant(avgGrade, county, programType))
+      .flatMap { case (rep, school) => school.toGymnasiumUnit(rep, avgGrade, county, programType) }
     PotentialSchools(filteredSchools)
   }
 

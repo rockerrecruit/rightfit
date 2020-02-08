@@ -27,7 +27,7 @@ object Api {
       potentialSchools.schools match {
         case _ :: _ =>
           potentialSchools.schools
-            .map(school => s"School: ${school.schoolUnit.name.value} has average admission: ${school.programWithAverages}\n")
+            .map(school => s"School: ${school.schoolUnit.name.value} has average admission: ${school.averageGrade}\n")
             .prepended("\n")
             .combineAll
         case Nil =>
@@ -37,23 +37,9 @@ object Api {
   }
 
 
-  case class GymnasiumUnit(schoolUnit: SchoolUnit, programWithAverages: List[ProgramWithAverage]) {
+  case class GymnasiumUnit(schoolUnit: SchoolUnit, averageGrade: AverageGrade) {
 
-    def isRelevant(desiredTarget: AverageGrade, desiredCounty: County, desiredType: ProgramType): Boolean = {
-      programWithAverages.map { progWithAverage =>
-        progWithAverage.programType == desiredType &&
-        isWithin10Avg(progWithAverage.averageGrade, desiredTarget) &&
-        isInCounty(desiredCounty)
-      }.forall(_ == true)
-    }
 
-    private def isWithin10Avg(avgForUnit: AverageGrade, desiredTarget: AverageGrade): Boolean = {
-      avgForUnit.value + 10.0 >= desiredTarget.value && avgForUnit.value - 10.0 <= desiredTarget.value
-    }
-
-    private def isInCounty(desiredCounty: County): Boolean = {
-      schoolUnit.municipality.value.startsWith(desiredCounty.value)
-    }
   }
 
   object GymnasiumUnit {
@@ -110,7 +96,33 @@ object Api {
 
   case class GymnasiumDetailedUnit(status: String, message: String, body: GymnasiumDetailedUnit.Body) {
 
-    def toGymnasiumUnit(schoolUnit: SchoolUnitRep): GymnasiumUnit = {
+    def isRelevant(
+      schoolUnit: SchoolUnit,
+      desiredTarget: AverageGrade,
+      desiredCounty: County,
+      desiredType: ProgramType,
+      programWithAverages: List[ProgramWithAverage]
+    ): Option[AverageGrade] = {
+      programWithAverages.flatMap { progWithAverage =>
+        val correctProgramType = progWithAverage.programType == desiredType
+        val correctAvg         = isWithin10Avg(progWithAverage.averageGrade, desiredTarget)
+        val correctCounty      = isInCounty(schoolUnit, desiredCounty)
+        if (correctProgramType && correctAvg && correctCounty) Some(progWithAverage.averageGrade) else None
+      } match {
+        case head :: _ => Some(head)
+        case Nil       => None
+      }
+    }
+
+    private def isWithin10Avg(avgForUnit: AverageGrade, desiredTarget: AverageGrade): Boolean = {
+      avgForUnit.value + 10.0 >= desiredTarget.value && avgForUnit.value - 10.0 <= desiredTarget.value
+    }
+
+    private def isInCounty(schoolUnit: SchoolUnit, desiredCounty: County): Boolean = {
+      schoolUnit.municipality.value.startsWith(desiredCounty.value)
+    }
+
+    def toGymnasiumUnit(schoolUnit: SchoolUnitRep, desiredTarget: AverageGrade, desiredCounty: County, desiredType: ProgramType): Option[GymnasiumUnit] = {
 
       def parseCommaString(string: String): Option[Double] = {
         import java.text.NumberFormat
@@ -136,7 +148,9 @@ object Api {
         SchoolUnit.OrgNo(schoolUnit.code),
       )
 
-      GymnasiumUnit(unit, avgList)
+      isRelevant(unit, desiredTarget, desiredCounty, desiredType, avgList).map { avgGrade =>
+        GymnasiumUnit(unit, avgGrade)
+      }
     }
   }
 
