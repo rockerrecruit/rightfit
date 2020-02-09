@@ -7,15 +7,22 @@ import io.circe.{Decoder, Encoder}
 import org.http4s.{EntityDecoder, EntityEncoder}
 import zio.Task
 import cats.implicits._
-import com.rightfit.api.skolverket.Api.GymnasiumUnit.{ProgramWithAverage, SchoolUnit}
+import com.rightfit.api.skolverket.Api.GymnasiumUnit.SchoolUnit
 import com.rightfit.api.skolverket.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
-import com.rightfit.model.{AverageGrade, County, ProgramType}
+import com.rightfit.model.{AverageGrade, County, ProgramType, RequestData}
 import org.http4s.circe._
 import zio.interop.catz._
 
 import scala.util.Try
 
 object Api {
+
+  case class ProgramWithAverage(programType: ProgramType, averageGrade: AverageGrade)
+
+  object ProgramWithAverage {
+    implicit val e: Encoder[ProgramWithAverage] = semiauto.deriveEncoder
+    implicit val d: Decoder[ProgramWithAverage] = semiauto.deriveDecoder
+  }
 
   case class PotentialSchools(schools: List[GymnasiumUnit])
 
@@ -27,7 +34,7 @@ object Api {
       potentialSchools.schools match {
         case _ :: _ =>
           potentialSchools.schools
-            .map(school => s"School: ${school.schoolUnit.name.value} has average admission: ${school.averageGrade}\n")
+            .map(s => s"School: ${s.schoolUnit.name.value} has average admission: ${s.averageGrade.show}\n")
             .prepended("\n")
             .combineAll
         case Nil =>
@@ -36,23 +43,12 @@ object Api {
     }
   }
 
-
-  case class GymnasiumUnit(schoolUnit: SchoolUnit, averageGrade: AverageGrade) {
-
-
-  }
+  case class GymnasiumUnit(schoolUnit: SchoolUnit, averageGrade: AverageGrade)
 
   object GymnasiumUnit {
 
     implicit val e: Encoder[GymnasiumUnit] = semiauto.deriveEncoder
     implicit val d: Decoder[GymnasiumUnit] = semiauto.deriveDecoder
-
-    case class ProgramWithAverage(programType: ProgramType, averageGrade: AverageGrade)
-
-    object ProgramWithAverage {
-      implicit val e: Encoder[ProgramWithAverage] = semiauto.deriveEncoder
-      implicit val d: Decoder[ProgramWithAverage] = semiauto.deriveDecoder
-    }
 
     import SchoolUnit._
 
@@ -96,17 +92,15 @@ object Api {
 
   case class GymnasiumDetailedUnit(status: String, message: String, body: GymnasiumDetailedUnit.Body) {
 
-    def isRelevant(
+    def averageByRequestData(
       schoolUnit: SchoolUnit,
-      desiredTarget: AverageGrade,
-      desiredCounty: County,
-      desiredType: ProgramType,
+      requestData: RequestData,
       programWithAverages: List[ProgramWithAverage]
     ): Option[AverageGrade] = {
       programWithAverages.flatMap { progWithAverage =>
-        val correctProgramType = progWithAverage.programType == desiredType
-        val correctAvg         = isWithin10Avg(progWithAverage.averageGrade, desiredTarget)
-        val correctCounty      = isInCounty(schoolUnit, desiredCounty)
+        val correctProgramType = progWithAverage.programType == requestData.programType
+        val correctAvg         = isWithin10Avg(progWithAverage.averageGrade, requestData.averageGrade)
+        val correctCounty      = isInCounty(schoolUnit, requestData.county)
         if (correctProgramType && correctAvg && correctCounty) Some(progWithAverage.averageGrade) else None
       } match {
         case head :: _ => Some(head)
@@ -122,7 +116,7 @@ object Api {
       schoolUnit.municipality.value.startsWith(desiredCounty.value)
     }
 
-    def toGymnasiumUnit(schoolUnit: SchoolUnitRep, desiredTarget: AverageGrade, desiredCounty: County, desiredType: ProgramType): Option[GymnasiumUnit] = {
+    def toGymnasiumUnit(schoolUnit: SchoolUnitRep, requestData: RequestData): Option[GymnasiumUnit] = {
 
       def parseCommaString(string: String): Option[Double] = {
         import java.text.NumberFormat
@@ -135,10 +129,10 @@ object Api {
       }
 
       val avgList = (for {
-        metric      <- body.programMetrics.toList
-        avg         <- metric.admissionPointsAverage.toList
-        averageGrade = avg.value.flatMap(parseCommaString).map(AverageGrade.apply)
-        programCode  = ProgramType(metric.programCode)
+        metric       <- body.programMetrics.toList
+        avg          <- metric.admissionPointsAverage.toList
+        averageGrade  = avg.value.flatMap(parseCommaString).map(AverageGrade.apply)
+        programCode   = ProgramType(metric.programCode)
       } yield averageGrade.map(avgGrade => ProgramWithAverage(programCode, avgGrade))).flatten
 
       val unit = SchoolUnit(
@@ -148,9 +142,7 @@ object Api {
         SchoolUnit.OrgNo(schoolUnit.code),
       )
 
-      isRelevant(unit, desiredTarget, desiredCounty, desiredType, avgList).map { avgGrade =>
-        GymnasiumUnit(unit, avgGrade)
-      }
+      averageByRequestData(unit, requestData, avgList).map(avgGrade => GymnasiumUnit(unit, avgGrade))
     }
   }
 

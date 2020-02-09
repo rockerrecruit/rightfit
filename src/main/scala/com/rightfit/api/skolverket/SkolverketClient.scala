@@ -9,7 +9,7 @@ import zio._
 import zio.interop.catz._
 import SkolverketClient.Helpers._
 import cats.syntax.show._
-import com.rightfit.model.{AverageGrade, County, ProgramType}
+import com.rightfit.model.{AverageGrade, County, ProgramType, RequestData}
 import org.slf4j.{Logger, LoggerFactory}
 import zio.console.Console
 
@@ -66,7 +66,7 @@ object SkolverketClient {
       )
 
     def getSchoolsByPage(client: Client[Task], upToPage: Int): Task[List[SchoolUnitSummary]] = {
-      val maxPage = if (upToPage > 14) 14 else upToPage
+      val maxPage  = if (upToPage > 14) 14 else upToPage
       val requests = List.range(0, maxPage).map { p =>
         val strUrl  = s"https://api.skolverket.se/planned-educations/school-units?page=$p&size=100&typeOfSchooling=gy"
         val uri     = Uri.unsafeFromString(strUrl)
@@ -90,10 +90,7 @@ object SkolverketClient {
     }
 
     //FIXME: A GET on the 'nextLink' returns a 302. Perhaps I'm supposed to use a different header?
-    def getSchoolsByLink(
-      client: Client[Task],
-      maybeLink: Option[SchoolUnitSummary.Body.Links.Next]
-    ): Task[List[SchoolUnitSummary]] = {
+    def getSchoolsByLink(client: Client[Task]): Task[List[SchoolUnitSummary]] = {
 
       def recurse(maybeLink: Option[SchoolUnitSummary.Body.Links.Next]): Task[List[SchoolUnitSummary]] = {
         maybeLink match {
@@ -119,14 +116,11 @@ object SkolverketClient {
   }
 
 
-  def getSchoolByGrade(
-    schoolDetails: SchoolDetails,
-    avgGrade: AverageGrade,
-    county: County,
-    programType: ProgramType
-  ): PotentialSchools = {
+  def getSchoolByGrade(schoolDetails: SchoolDetails, requestData: RequestData): PotentialSchools = {
     val filteredSchools = schoolDetails
-      .flatMap { case (rep, school) => school.toGymnasiumUnit(rep, avgGrade, county, programType) }
+      .flatMap {
+        case (rep, school) => school.toGymnasiumUnit(rep, requestData)
+      }
     PotentialSchools(filteredSchools)
   }
 
@@ -138,14 +132,13 @@ object TestSkolverketClient extends App {
   val log: Logger = LoggerFactory.getLogger(this.getClass)
 
   def testClient: ZIO[Console with BlazeHttpClient, Throwable, Unit] = {
-    val avgGrade = AverageGrade(240.0)
+    val avgGrade = AverageGrade(320.0)
     val service  = SkolverketClient.Test
     for {
       _             <- ZIO.effect(log.debug( s"Retrieving a few schools with avg grade around ${avgGrade.show}"))
       schoolDetails <- service.skolverketClient.retrieveAllSchoolsWithStats
-      schools        = getSchoolByGrade(schoolDetails, avgGrade, County("01"), ProgramType("NA"))
+      schools        = getSchoolByGrade(schoolDetails, RequestData(avgGrade, County("01"), ProgramType("NA")))
       _             <- ZIO.effect(log.debug(schools.show))
-      _             <- ZIO.effect(log.debug(s"$schools"))
     } yield ()
   }
 

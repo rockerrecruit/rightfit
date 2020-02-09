@@ -5,7 +5,7 @@ import cats.syntax.show._
 import com.rightfit.api.skolverket.Api.GymnasiumDetailedUnit
 import com.rightfit.api.skolverket.Api.SchoolUnitSummary.Body.Embedded.SchoolUnitRep
 import com.rightfit.api.skolverket.SkolverketClient
-import com.rightfit.model.{AverageGrade, County, ProgramType}
+import com.rightfit.model.{AverageGrade, County, ProgramType, RequestData}
 import io.circe.generic.extras.semiauto.{deriveUnwrappedDecoder, deriveUnwrappedEncoder}
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.{Decoder, Encoder}
@@ -47,7 +47,7 @@ final case class Server[R](rootUri: String) {
   val dsl: Http4sDsl[ScoreTask] = Http4sDsl[ScoreTask]
   import dsl._
 
-  def route(schools: List[(SchoolUnitRep, GymnasiumDetailedUnit)]): HttpRoutes[ScoreTask] = {
+  def route(allSchools: List[(SchoolUnitRep, GymnasiumDetailedUnit)]): HttpRoutes[ScoreTask] = {
     val log = LoggerFactory.getLogger(getClass)
 
     HttpRoutes.of[ScoreTask] {
@@ -56,11 +56,12 @@ final case class Server[R](rootUri: String) {
       case request @ POST -> Root =>
         request.decode[ScoreData] { scoreData =>
           for {
-            _        <- ZIO.effect(log.debug(s"Got request [$scoreData]"))
-            avgGrade <- ZIO.fromTry(Try(AverageGrade(scoreData.score.value.toDouble)))
-            result    = SkolverketClient.getSchoolByGrade(schools, avgGrade, scoreData.county, scoreData.programType)
-            _        <- ZIO.effect(log.debug(s"Responding client with: ${result.show}"))
-            response <- Ok(result)
+            _               <- ZIO.effect(log.debug(s"Got request [$scoreData]"))
+            avgGrade        <- ZIO.fromTry(Try(AverageGrade(scoreData.score.value.toDouble)))
+            reqData          = RequestData(avgGrade, scoreData.county, scoreData.programType)
+            relevantSchools  = SkolverketClient.getSchoolByGrade(allSchools, reqData)
+            _               <- ZIO.effect(log.debug(s"Responding client with: ${relevantSchools.show}"))
+            response        <- Ok(relevantSchools)
           } yield response
         }
     }
